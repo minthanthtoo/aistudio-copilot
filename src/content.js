@@ -1146,7 +1146,8 @@
     const isPaused = isActive && !state.runner.enabled;
     let highlightClass = "";
     if (isActive) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
-    const card = el("div", { className: `aisq-chain-card ${chainIsLocked(state, chain.id) ? "locked" : ""} ${selected ? "selected" : ""}${highlightClass}` });
+    const locked = isActive && state.runner.enabled;
+    const card = el("div", { className: `aisq-chain-card ${locked ? "locked" : ""} ${selected ? "selected" : ""}${highlightClass}` });
     const head = el("div", { className: "aisq-chain-head" }, [
       button(`${index + 1}. ${chain.name}`, () => command("SELECT_CHAIN", { chainId: chain.id }), selected ? "primary" : "ghost"),
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
