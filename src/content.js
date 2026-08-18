@@ -484,12 +484,14 @@
   async function finishSubmission(host) {
     const prompt = runnerPrompt();
     if (!prompt) return markPromptError("Pending prompt could not be found");
+    const chain = state.chains.find((c) => c.id === state.runner.activeChainId);
+    const fullText = (prompt.includePreface !== false && chain?.preface) ? `${chain.preface}\n\n${prompt.text}` : prompt.text;
     if (!host.textarea || !host.submit) {
       if (Date.now() - Number(state.runner.submittedAt || 0) > state.settings.startTimeoutMs) markPromptError("AI Studio composer disappeared before submission");
       return;
     }
-    if (host.textarea.value !== prompt.text) {
-      setNativeValue(host.textarea, prompt.text);
+    if (host.textarea.value !== fullText) {
+      setNativeValue(host.textarea, fullText);
       state.runner.nextActionAt = Date.now() + 150;
       return;
     }
@@ -1067,7 +1069,7 @@
     const result = Core.parsePromptPack(raw, strategy);
     if (!result.prompts.length) return { ok: false, error: "Nothing to import" };
     const number = state.chains.length + 1;
-    const chain = Core.makeChain(options.name || `Chain ${number}`, result.prompts, raw, { splitStrategy: result.strategy, pastedAt: Core.nowISO() });
+    const chain = Core.makeChain(options.name || `Chain ${number}`, result.prompts, raw, { splitStrategy: result.strategy, pastedAt: Core.nowISO(), preface: result.preface });
     const placement = options.placement || state.settings.pastePlacement;
     const commandResult = command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${result.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: result.strategy } } });
     if (commandResult.ok) {
@@ -1213,6 +1215,22 @@
     wrap.append(el("div", { className: "aisq-meter", text: `${counts.complete}/${counts.total} complete · ${counts.queued} queued · ${counts.error} errors · ${counts.skipped} skipped` }));
 
     const list = el("div", { className: "aisq-prompt-list" });
+    if (chain.preface) {
+      const prefaceEditor = el("textarea", { className: "aisq-prompt-editor aisq-preface-editor", value: chain.preface, disabled: true });
+      const includeAllToggle = button(
+        chain.prompts.every(p => p.includePreface !== false) ? "Exclude from all" : "Include in all", 
+        () => command("TOGGLE_ALL_PREFACES", { chainId: chain.id, include: !chain.prompts.every(p => p.includePreface !== false) }),
+        "ghost"
+      );
+      const prefaceSummary = el("summary", { className: "aisq-prompt-head" }, [
+        el("strong", { text: "Preface (Intro)" }),
+        includeAllToggle
+      ]);
+      const prefaceDetails = el("details", { className: "aisq-prompt aisq-preface-card" }, [prefaceSummary, prefaceEditor]);
+      prefaceDetails.open = true;
+      list.append(prefaceDetails);
+    }
+
     chain.prompts.forEach((prompt, index) => {
       const locked = prompt.status === "pending" || prompt.status === "complete" || state.runner.pendingPromptId === prompt.id;
       const editor = el("textarea", { className: "aisq-prompt-editor", value: prompt.text, disabled: locked });
@@ -1221,7 +1239,19 @@
       const down = button("↓", () => command("MOVE_PROMPT", { chainId: chain.id, promptId: prompt.id, direction: 1 }), "ghost", `Move ${prompt.label} later`);
       const merge = button("Merge", () => command("MERGE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "ghost");
       const remove = button("Delete", () => command("DELETE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "danger ghost");
-      [up, down, merge, remove].forEach((control) => { 
+      
+      const controls = [up, down, merge, remove];
+      if (chain.preface) {
+        const togglePreface = button(
+          prompt.includePreface !== false ? "Intro On" : "Intro Off", 
+          () => command("TOGGLE_PROMPT_PREFACE", { chainId: chain.id, promptId: prompt.id, include: prompt.includePreface === false }),
+          prompt.includePreface !== false ? "ghost aisq-preface-on" : "ghost aisq-preface-off"
+        );
+        togglePreface.title = "Toggle whether the preface is prepended to this prompt before submission";
+        controls.unshift(togglePreface);
+      }
+
+      controls.forEach((control) => { 
         control.disabled = locked || prompt.status === "skipped";
         control.addEventListener("click", (e) => e.stopPropagation());
       });
@@ -1231,7 +1261,7 @@
       if (isRunning) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
       const details = el("details", { className: `aisq-prompt aisq-${prompt.status}${highlightClass}` });
       if (isRunning || prompt.status === "error") details.open = true;
-      const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), up, down, merge, remove]);
+      const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), ...controls]);
       
       details.append(
         summary,

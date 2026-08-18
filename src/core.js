@@ -47,16 +47,15 @@
     return { lines, matches };
   }
 
-  function splitAtHeaders(text, headerPattern, includePrefix = true) {
+  function splitAtHeaders(text, headerPattern) {
     const { lines, matches } = mapLinesOutsideFences(text, (line) => headerPattern.test(line));
     if (matches.length < 2) return null;
-    const prefix = lines.slice(0, matches[0]).join("\n").trim();
+    const preface = lines.slice(0, matches[0]).join("\n").trim();
     const parts = matches.map((start, index) => {
       const end = matches[index + 1] ?? lines.length;
-      const block = lines.slice(start, end).join("\n").trim();
-      return includePrefix && prefix ? `${prefix}\n\n${block}` : block;
+      return lines.slice(start, end).join("\n").trim();
     }).filter(Boolean);
-    return parts.length >= 2 ? parts : null;
+    return parts.length >= 2 ? { preface, parts } : null;
   }
 
   function splitAtDelimiters(text) {
@@ -64,24 +63,39 @@
     const { lines, matches } = mapLinesOutsideFences(text, (line) => delimiter.test(line));
     if (!matches.length) return null;
     const points = [-1, ...matches, lines.length];
-    const parts = [];
+    const chunks = [];
     for (let index = 0; index < points.length - 1; index += 1) {
       const block = lines.slice(points[index] + 1, points[index + 1]).join("\n").trim();
-      if (block) parts.push(block);
+      chunks.push(block);
     }
+    let preface = "";
+    let parts = chunks;
+    const headerPattern = /^(?:#{1,6}\s*)?(?:(?:Stage|Phase|Step|Round|Part)\s+\d+|(?:\[)?(?:P|R)\d{3}(?:\])?|Prompt\s+\d+)\b/i;
+    if (chunks.length > 1 && !headerPattern.test(chunks[0]) && headerPattern.test(chunks[1])) {
+      preface = chunks[0];
+      parts = chunks.slice(1);
+    } else if (chunks.length > 1 && !chunks[0]) {
+      preface = chunks[0];
+      parts = chunks.slice(1);
+    } else if (chunks.length > 1 && chunks[0].length < 24 && !headerPattern.test(chunks[0])) {
+      preface = chunks[0];
+      parts = chunks.slice(1);
+    }
+    parts = parts.filter(Boolean);
     if (parts.length < 2 || parts.some((part) => part.length < 24)) return null;
-    return parts;
+    return { preface, parts };
   }
 
   function splitNumberedBlocks(text) {
     const { lines, matches } = mapLinesOutsideFences(text, (line) => /^[ \t]{0,3}\d+[.)]\s+\S/.test(line));
     if (matches.length < 3) return null;
+    const preface = lines.slice(0, matches[0]).join("\n").trim();
     const parts = matches.map((start, index) => {
       const end = matches[index + 1] ?? lines.length;
       return lines.slice(start, end).join("\n").trim();
     }).filter(Boolean);
     if (parts.some((part) => part.length < 40)) return null;
-    return parts;
+    return { preface, parts };
   }
 
   function labelForPrompt(text, index) {
@@ -107,7 +121,7 @@
 
   function parsePromptPack(raw, strategy = "auto") {
     const text = normalizeText(raw);
-    if (!text) return { strategy: "empty", prompts: [] };
+    if (!text) return { strategy: "empty", preface: "", prompts: [] };
 
     const strategies = {
       stage: () => splitAtHeaders(text, /^[ \t]{0,3}(?:#{1,6}\s*)?(?:Stage|Phase|Step|Round|Part)\s+\d+\b/i),
@@ -115,20 +129,24 @@
       prompt: () => splitAtHeaders(text, /^[ \t]{0,3}(?:#{1,6}\s*)?Prompt\s+\d+\b/i),
       delimiter: () => splitAtDelimiters(text),
       numbered: () => splitNumberedBlocks(text),
-      single: () => [text]
+      single: () => ({ preface: "", parts: [text] })
     };
 
     if (strategy !== "auto") {
       const selected = strategies[strategy] ? strategies[strategy]() : null;
-      const parts = selected?.length ? selected : [text];
-      return { strategy: selected?.length ? strategy : "single", prompts: promptRecords(parts) };
+      if (selected && selected.parts.length) {
+        return { strategy, preface: selected.preface || "", prompts: promptRecords(selected.parts) };
+      }
+      return { strategy: "single", preface: "", prompts: promptRecords([text]) };
     }
 
-    for (const name of ["stage", "id", "prompt", "delimiter", "numbered"]) {
-      const parts = strategies[name]();
-      if (parts?.length) return { strategy: name, prompts: promptRecords(parts) };
+    for (const name of ["delimiter", "stage", "id", "prompt", "numbered"]) {
+      const result = strategies[name]();
+      if (result && result.parts.length) {
+        return { strategy: name, preface: result.preface || "", prompts: promptRecords(result.parts) };
+      }
     }
-    return { strategy: "single", prompts: promptRecords([text]) };
+    return { strategy: "single", preface: "", prompts: promptRecords([text]) };
   }
 
   function defaultSettings() {
@@ -214,7 +232,8 @@
       attempts: Math.max(0, Number(prompt?.attempts || 0)),
       submittedAt: prompt?.submittedAt || null,
       completedAt: prompt?.completedAt || prompt?.sentAt || null,
-      error: prompt?.error || null
+      error: prompt?.error || null,
+      includePreface: prompt?.includePreface !== false
     };
   }
 
@@ -236,6 +255,7 @@
       createdAt: stamp,
       updatedAt: raw.updatedAt || stamp,
       prompts,
+      preface: raw.preface || "",
       // cursor is retained as a display/recovery hint only; status and IDs are authoritative.
       cursor: Math.max(0, Number(raw.cursor || 0))
     };
@@ -315,6 +335,7 @@
       createdAt: stamp,
       updatedAt: stamp,
       cursor: 0,
+      preface: source.preface || "",
       prompts: Array.isArray(prompts) ? prompts.map(normalizePrompt) : []
     };
   }
@@ -456,6 +477,11 @@
       if (!chain) return reject("Chain not found");
       chain.name = normalizeText(payload.name) || "Prompt chain";
       chain.updatedAt = nowISO();
+    } else if (type === "TOGGLE_ALL_PREFACES") {
+      if (!chain) return reject("Chain not found");
+      const include = payload.include !== false;
+      chain.prompts.forEach((prompt) => { prompt.includePreface = include; });
+      chain.updatedAt = nowISO();
     } else if (type === "MOVE_CHAIN") {
       if (!chain) return reject("Chain not found");
       if (state.runner.enabled && chain.id === state.runner.activeChainId) return reject("The running chain is locked");
@@ -511,6 +537,11 @@
       prompt.text = normalizeText(payload.text);
       if (!prompt.text) return reject("Prompt text cannot be empty");
       prompt.label = labelForPrompt(prompt.text, chain.prompts.indexOf(prompt));
+      chain.updatedAt = nowISO();
+    } else if (type === "TOGGLE_PROMPT_PREFACE") {
+      const prompt = chain?.prompts.find((item) => item.id === payload.promptId);
+      if (!prompt) return reject("Prompt not found");
+      prompt.includePreface = payload.include !== false;
       chain.updatedAt = nowISO();
     } else if (type === "MOVE_PROMPT") {
       const index = chain?.prompts.findIndex((item) => item.id === payload.promptId) ?? -1;

@@ -9,8 +9,8 @@ test("Stage headings split a prompt pack and preserve the shared preface", () =>
   const result = Core.parsePromptPack(input);
   assert.equal(result.strategy, "stage");
   assert.equal(result.prompts.length, 2);
-  assert.match(result.prompts[0].text, /^Global rules:/);
-  assert.match(result.prompts[1].text, /^Global rules:/);
+  assert.match(result.preface, /^Global rules:/);
+  assert.match(result.prompts[0].text, /Stage 1/);
   assert.match(result.prompts[1].text, /Stage 2/);
   assert.match(result.prompts[0].label, /Stage 1/);
   assert.match(result.prompts[1].label, /Stage 2/);
@@ -44,7 +44,7 @@ test("large staged packs preserve all prompt boundaries without treating fenced 
   const result = Core.parsePromptPack(`Global production rules apply to every unit.\n\n${sections.join("\n\n")}`);
   assert.equal(result.strategy, "stage");
   assert.equal(result.prompts.length, 300);
-  assert.ok(result.prompts.every((prompt) => /^Global production rules/.test(prompt.text)));
+  assert.match(result.preface, /^Global production rules/);
   assert.match(result.prompts[299].text, /Stage 300/);
 });
 
