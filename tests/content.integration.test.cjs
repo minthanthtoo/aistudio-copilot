@@ -121,7 +121,7 @@ test("content script mounts an isolated shadow UI and toggles without TrustedHTM
   await wait(40);
   assert.equal(root.shadowRoot.getElementById("aisq-panel").hidden, false);
   assert.match(root.shadowRoot.textContent, /Queue Pilot/);
-  assert.equal(root.shadowRoot.querySelectorAll('[role="tab"]').length, 4);
+  assert.equal(root.shadowRoot.querySelectorAll('[role="tab"]').length, 5);
 });
 
 test("stale-root reinjection stops the prior runtime before remounting", async (t) => {
