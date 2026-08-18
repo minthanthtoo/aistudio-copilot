@@ -508,10 +508,6 @@
       state.stackOrder = state.stackOrder.filter((id) => id !== chain.id);
       const activeIndex = state.runner.activeChainId ? state.stackOrder.indexOf(state.runner.activeChainId) : -1;
       state.stackOrder.splice(activeIndex + 1, 0, chain.id);
-      if (!state.runner.enabled) {
-        state.runner.activeChainId = chain.id;
-        state.runner.pendingPromptId = null;
-      }
       state.selectedChainId = chain.id;
     } else if (type === "FORCE_JUMP_TO_CHAIN") {
       if (!chain) return reject("Chain not found");
