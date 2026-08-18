@@ -1449,20 +1449,20 @@
 
   function renderTopRunControls() {
     const isPromptsTab = state.settings.activeTab === "prompts";
-    const startLabel = state.runner.phase === PHASES.PAUSED ? "Resume" : "Start";
+    const startLabel = state.runner.phase === PHASES.PAUSED ? "▶️ Resume" : "▶️ Start";
     const foreignPending = !!(state.runner.pendingPromptId && state.runner.ownerTabId && state.runner.ownerTabId !== tabId && !leaseToken);
     
     const primaryControl = foreignPending
-      ? button("Recover here", () => void recoverPendingHere(), "primary", "Explicitly recover the pending runner in this AI Studio app")
+      ? button("🔁 Recover", () => void recoverPendingHere(), "primary", "Explicitly recover the pending runner in this AI Studio app")
       : !state.runner.enabled
         ? button(startLabel, () => { void (state.runner.phase === PHASES.PAUSED ? resumeRunner() : startRunner("stack")); }, "primary")
-        : leaseToken ? button("Pause", pauseRunner) : button("Owned elsewhere", () => {}, "ghost", "Runner is owned by another AI Studio tab");
+        : leaseToken ? button("⏸️ Pause", pauseRunner) : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
     if (state.runner.enabled && !leaseToken && !foreignPending) primaryControl.disabled = true;
 
-    const runSelected = button("Run selected", () => void startRunner("selected"), "ghost");
+    const runSelected = button("⏏️ Run Selected", () => void startRunner("selected"), "ghost");
     runSelected.disabled = !isPromptsTab || state.runner.enabled || !!state.runner.pendingPromptId;
 
-    const skipCurrent = button("Skip current", skipPrompt, "ghost");
+    const skipCurrent = button("⏭️ Skip", skipPrompt, "ghost");
     skipCurrent.disabled = !isPromptsTab || foreignPending || (state.runner.enabled && !leaseToken);
 
     const currentChain = runnerChain();
@@ -1488,7 +1488,20 @@
     if (bubble) bubble.classList.toggle("running", state.runner.enabled);
     if (statusLine) statusLine.textContent = `${state.runner.phase.replaceAll("_", " ")} · ${state.runner.lastHostState || "ready"}`;
     if (panel.hidden) return;
-    const header = el("header", { className: "aisq-header" }, [el("div", {}, [el("strong", { text: "Queue Pilot" }), el("div", { className: "aisq-subtitle", text: "Google AI Studio Apps · stacked chains" })]), button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Queue Pilot")]);
+    
+    if (state.settings.isMinimized) panel.classList.add("aisq-minimized");
+    else panel.classList.remove("aisq-minimized");
+
+    const header = el("header", { className: "aisq-header" }, [
+      el("div", {}, [
+        el("strong", { text: "Queue Pilot" }), 
+        el("div", { className: "aisq-subtitle", text: "Google AI Studio Apps · stacked chains" })
+      ]), 
+      el("div", { className: "aisq-window-controls" }, [
+        button(state.settings.isMinimized ? "◱" : "—", () => mutate(() => { state.settings.isMinimized = !state.settings.isMinimized; }), "icon", state.settings.isMinimized ? "Maximize Queue Pilot" : "Minimize Queue Pilot"),
+        button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Queue Pilot")
+      ])
+    ]);
     
     let promptBadge = "";
     const selectedChain = Core.getSelectedChain(state);
@@ -1531,8 +1544,17 @@
       .aisq-tabs { position:sticky; top:61px; z-index:2; display:grid; grid-template-columns:repeat(5,1fr); padding:0 10px 10px; gap:4px; background:#15151af2; }
       .aisq-tab { border:0; border-radius:9px; padding:7px 4px; background:transparent; color:#aaa6b7; text-transform:capitalize; cursor:pointer; }
       .aisq-tab.active { background:#6d4aff; color:white; }
-      .aisq-top-run-controls { position:sticky; top:99px; z-index:2; display:flex; gap:8px; padding:10px 16px; background:#1e1d24f2; backdrop-filter:blur(12px); border-bottom:1px solid #ffffff12; align-items:center; flex-wrap:wrap; }
-      .aisq-top-status { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; }
+      .aisq-top-run-controls { position:sticky; top:99px; z-index:2; display:flex; gap:8px; padding:10px 16px; background:#1e1d24f2; backdrop-filter:blur(12px); border-bottom:1px solid #ffffff12; align-items:center; flex-wrap:wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-radius: 0 0 18px 18px; }
+      .aisq-top-status { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; color: #b9a9ff; font-weight: 500; }
+      #aisq-panel.aisq-minimized { width: auto; max-width: 480px; min-width: 320px; bottom: 80px; }
+      #aisq-panel.aisq-minimized .aisq-tabs,
+      #aisq-panel.aisq-minimized .aisq-global-error,
+      #aisq-panel.aisq-minimized .aisq-panel > div:not(.aisq-top-run-controls),
+      #aisq-panel.aisq-minimized .aisq-scroll-actions,
+      #aisq-panel.aisq-minimized .aisq-footer,
+      #aisq-panel.aisq-minimized .aisq-section { display: none !important; }
+      #aisq-panel.aisq-minimized .aisq-top-run-controls { border-bottom: none; border-radius: 0 0 18px 18px; top: 61px; }
+      .aisq-window-controls { display: flex; gap: 4px; align-items: center; }
       .aisq-section { display:flex; flex-direction:column; gap:12px; padding:14px 16px 18px; }
       .aisq-field { display:flex; flex-direction:column; gap:5px; }
       .aisq-label { font-weight:650; }

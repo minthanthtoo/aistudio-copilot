@@ -165,7 +165,7 @@ test("start-page queue imports, fills through input events, and clicks Build onc
   await wait(50);
   Array.from(shadow.querySelectorAll(".aisq-tab")).find((node) => node.textContent === "run").click();
   await wait(50);
-  Array.from(shadow.querySelectorAll(".aisq-button")).find((node) => node.textContent === "Start").click();
+  Array.from(shadow.querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Start")).click();
   await wait(1200);
 
   assert.equal(textarea.value, promptText);
@@ -196,7 +196,7 @@ test("a storage commit failure prevents the irreversible host click", async (t) 
   Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Add chain").click();
   Array.from(env.shadow().querySelectorAll(".aisq-tab")).find((node) => node.textContent === "run").click();
   await wait(50);
-  Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Start").click();
+  Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Start")).click();
   await wait(1200);
 
   assert.equal(clicks, 0);
@@ -225,7 +225,7 @@ test("hidden duplicate controls are ignored and a guided-tour dialog blocks subm
   assert.equal(env.window.__aisq.scan().mode, "start");
   assert.equal(env.window.__aisq.scan().blocked, true);
 
-  Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Start").click();
+  Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Start")).click();
   await wait(700);
   assert.equal(buildClicks, 0);
   assert.equal(env.window.document.getElementById("visible-start").value, "");
@@ -392,7 +392,7 @@ test("manual mode completes one prompt and waits for an explicit Resume before f
   assert.equal(env.window.document.getElementById("manual-composer").value, "");
   assert.equal(sends, 0);
 
-  const resume = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Resume");
+  const resume = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Resume"));
   assert.ok(resume);
   resume.click();
   await wait(1200);
@@ -597,7 +597,7 @@ test("two content-script instances honor the service-worker runner lease", async
   const second = await createEnvironment(body, queuedState(), { sendMessage: sender(22) });
   t.after(() => { first.close(); second.close(); });
 
-  const clickNamed = (env, label) => Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === label)?.click();
+  const clickNamed = (env, label) => Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes(label))?.click();
   clickNamed(first, "Start");
   await wait(120);
   clickNamed(second, "Start");
@@ -651,7 +651,7 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   const second = await createEnvironment(body, null, { storageBackend: backend, sendMessage: sender(22) });
   let firstClosed = false;
   t.after(() => { if (!firstClosed) first.close(); second.close(); });
-  const clickNamed = (env, label) => Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === label)?.click();
+  const clickNamed = (env, label) => Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes(label))?.click();
 
   clickNamed(first, "Start");
   await wait(850);
@@ -661,10 +661,10 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   assert.equal(first.window.__aisq.state().runner.enabled, false);
   assert.equal(first.window.__aisq.state().runner.ownerTabId, "11");
   assert.equal(releases, 0, "manual pause retains the pending lease");
-  assert.equal(Array.from(second.shadow().querySelectorAll(".aisq-button")).some((node) => node.textContent === "Pause"), false);
-  assert.ok(Array.from(second.shadow().querySelectorAll(".aisq-button")).some((node) => node.textContent === "Recover here"));
+  assert.equal(Array.from(second.shadow().querySelectorAll(".aisq-button")).some((node) => node.textContent.includes("Pause")), false);
+  assert.ok(Array.from(second.shadow().querySelectorAll(".aisq-button")).some((node) => node.textContent.includes("Recover")));
 
-  clickNamed(second, "Recover here");
+  clickNamed(second, "Recover");
   await wait(120);
   assert.match(second.window.__aisq.state().runner.lastError, /original runner tab is still active/i);
   assert.equal(second.window.__aisq.state().runner.ownerTabId, "11");
@@ -673,7 +673,7 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   firstClosed = true;
   await wait(80);
   assert.equal(releases, 1);
-  clickNamed(second, "Recover here");
+  clickNamed(second, "Recover");
   await wait(180);
   assert.equal(second.window.__aisq.state().runner.enabled, true);
   assert.equal(second.window.__aisq.state().runner.ownerTabId, "22");
@@ -695,7 +695,7 @@ test("pending recovery refuses a different AI Studio app before acquiring a leas
     }
   });
   t.after(() => env.close());
-  const recover = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Recover here");
+  const recover = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Recover"));
   assert.ok(recover);
   recover.click();
   await wait(100);

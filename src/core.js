@@ -167,6 +167,7 @@
       autoFix: false,
       autoDownloadOnDone: false,
       panelOpen: false,
+      isMinimized: false,
       activeTab: "build"
     };
   }
