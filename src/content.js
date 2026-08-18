@@ -831,6 +831,12 @@
   }
 
   async function resumeRunner() {
+    if (state.runner.pendingPromptId) {
+      const currentKey = currentPageKey();
+      if (state.runner.boundPageKey === "/apps" && currentKey.startsWith("/apps/")) {
+        mutate(() => { state.runner.boundPageKey = currentKey; });
+      }
+    }
     if (state.runner.pendingPromptId && !pageMatchesBinding()) {
       mutate(() => { state.runner.lastError = `Pending work is bound to ${state.runner.boundPageKey}; open that AI Studio app before resuming`; });
       return;
