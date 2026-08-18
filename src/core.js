@@ -544,7 +544,7 @@
       if (state.selectedChainId === chain.id) state.selectedChainId = state.stackOrder[0] || state.chains[0]?.id || null;
     } else if (type === "DUPLICATE_CHAIN") {
       if (!chain) return reject("Chain not found");
-      const copy = makeChain(`${chain.name} copy`, chain.prompts.map((prompt) => ({ ...prompt, id: uid("prompt"), status: "queued", attempts: 0, submittedAt: null, completedAt: null, error: null })), chain.source.raw, chain.source);
+      const copy = makeChain(`${chain.name} copy`, chain.prompts.map((prompt) => ({ ...prompt, id: uid("prompt"), status: "queued", attempts: 0, submittedAt: null, completedAt: null, error: null })), chain.source.raw, { ...chain.source, preface: chain.preface });
       const index = state.stackOrder.indexOf(chain.id);
       const activeIndex = state.runner.enabled ? state.stackOrder.indexOf(state.runner.activeChainId) : -1;
       const insertionIndex = index < 0 ? state.stackOrder.length : Math.max(index + 1, activeIndex + 1);

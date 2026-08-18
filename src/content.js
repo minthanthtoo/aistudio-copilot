@@ -130,34 +130,70 @@
   function findRetryButton(scope = document) {
     const callouts = visibleAll("ms-error-callout, ms-chat-turn-error", scope).reverse();
     for (const callout of callouts) {
-      const retry = visibleAll("button", callout).find((button) => textOf(button) === "Retry");
+      const retry = visibleAll("button", callout).find((button) => textOf(button).includes("Retry"));
       if (retry) return retry;
     }
     return null;
   }
 
   function scanHost() {
-    const editorTextarea = visibleAll('ms-code-assistant-chat textarea[placeholder="Make changes, add new features, ask for anything"]')[0] ||
-      visibleAll('textarea[placeholder="Make changes, add new features, ask for anything"]')[0] || null;
+    // ── Textarea ─────────────────────────────────────────────────────────────
+    // Primary selector uses stable CSS class (.cdk-textarea-autosize) not fragile
+    // placeholder text, with the original placeholder as fallback.
+    const editorTextarea =
+      visibleAll('ms-code-assistant-chat textarea.cdk-textarea-autosize')[0] ||
+      visibleAll('ms-code-assistant-chat textarea[placeholder="Make changes, add new features, ask for anything"]')[0] ||
+      null;
     const startTextarea = visibleAll('textarea[placeholder="Describe an app and let Gemini do the rest"]')[0] || null;
     const mode = editorTextarea ? "editor" : startTextarea ? "start" : "unsupported";
     const textarea = editorTextarea || startTextarea;
+
+    // ── Send / Stop button ────────────────────────────────────────────────────
+    // In the editor the send button (button.send-button) DOUBLES as the stop
+    // button: when AI is generating it gains the CSS class "running" and shows
+    // a stop-square icon. There is no separate stop button in the DOM.
+    const sendBtn = mode === "editor"
+      ? visibleAll('ms-code-assistant-chat button.send-button')[0] ||
+        visibleAll('ms-code-assistant-chat button[aria-label="Send"]')[0] || null
+      : null;
+
+    // "running" class on the send button is the most reliable busy signal.
+    // ms-thinking-indicator is a secondary check (visible during generation).
+    const isRunning = !!(sendBtn?.classList.contains("running") ||
+      visibleAll("ms-thinking-indicator")[0]);
+
+    // When running: submit = null (can't submit again), stop = the running button.
+    // When idle:    submit = the send button, stop = null.
+    const stop = isRunning ? sendBtn : null;
     const submit = mode === "editor"
-      ? visibleAll('ms-code-assistant-chat button[aria-label="Send"]')[0] || visibleAll('button[aria-label="Send"]')[0] || null
+      ? (isRunning ? null : sendBtn)
       : mode === "start" ? visibleAll("button.build-button")[0] || exactButton("Build") : null;
-    const turns = visibleAll("ms-code-assistant-chat .turn-container > .turn");
+
+    // ── Turns ─────────────────────────────────────────────────────────────────
+    // Actual DOM: .turn-container > .turn-group > .turn
+    // User input turns have class "input"; AI response turns do NOT.
+    // We count only AI response turns so baselineTurnCount / newTurn are correct.
+    const turns = visibleAll("ms-code-assistant-chat .turn:not(.input)");
     const lastTurn = turns.at(-1) || null;
     const lastHeader = textOf(lastTurn?.querySelector(".turn-header"));
     const retry = lastTurn ? findRetryButton(lastTurn) : null;
     const errorText = textOf(lastTurn?.querySelector("ms-error-callout, ms-chat-turn-error"));
+
+    // ── Busy ──────────────────────────────────────────────────────────────────
+    // Primary: send-button.running / ms-thinking-indicator.
+    // Secondary: "Running for Xs" in turn header or lifecycle text in turn body.
     const transientActivity = lastTurn ? Array.from(lastTurn.querySelectorAll("*")).some((node) => visible(node) && /^(?:Assembling|Thinking|Applying file changes|Generating(?: design)? previews?)(?:…|\.\.\.)?$/i.test(textOf(node))) : false;
-    const busy = /\bRunning for\s+\d+s\b/i.test(lastHeader) || transientActivity;
+    const busy = isRunning || /\bRunning for\s+\d+s\b/i.test(lastHeader) || transientActivity;
+
+    // ── Blocking dialogs ─────────────────────────────────────────────────────
     const dialogs = visibleAll('[role="dialog"], mat-dialog-container');
     const blockingDialog = dialogs.find((dialog) => !rootHost?.contains(dialog) && /guided tour|welcome|sign in|consent/i.test(textOf(dialog))) || null;
+
     return Core.classifyHostSnapshot({
       mode,
       textarea,
       submit,
+      stop,
       submitReady: enabled(submit),
       turnCount: turns.length,
       lastHeader,
@@ -444,6 +480,15 @@
     if (state.settings.autoDownloadOnDone) void downloadZip();
   }
 
+  function getPromptFullText(chain, prompt) {
+    if (!prompt) return "";
+    const pText = chain?.preface ? String(chain.preface).trim() : "";
+    if (prompt.includePreface !== false && pText) {
+      return `${pText}\n\n${prompt.text}`;
+    }
+    return prompt.text;
+  }
+
   function beginSubmission(host) {
     const target = nextTarget();
     if (!target) {
@@ -479,8 +524,10 @@
     state.runner.retryCount = 0;
     state.runner.lastError = null;
     addHistory("prepared", `Prepared ${prompt.label}`, { chainId: chain.id, promptId: prompt.id, mode: host.mode });
+    
+    const fullText = getPromptFullText(chain, prompt);
     try {
-      setNativeValue(host.textarea, prompt.text);
+      setNativeValue(host.textarea, fullText);
       state.runner.nextActionAt = Date.now() + 150;
       touchState();
       scheduleSave();
@@ -495,7 +542,7 @@
     const prompt = runnerPrompt();
     if (!prompt) return markPromptError("Pending prompt could not be found");
     const chain = state.chains.find((c) => c.id === state.runner.activeChainId);
-    const fullText = (prompt.includePreface !== false && chain?.preface) ? `${chain.preface}\n\n${prompt.text}` : prompt.text;
+    const fullText = getPromptFullText(chain, prompt);
     if (!host.textarea || !host.submit) {
       if (Date.now() - Number(state.runner.submittedAt || 0) > state.settings.startTimeoutMs) markPromptError("AI Studio composer disappeared before submission");
       return;
@@ -1286,19 +1333,41 @@
     wrap.append(el("div", { className: "aisq-meter", text: `${counts.complete}/${counts.total} complete · ${counts.queued} queued · ${counts.error} errors · ${counts.skipped} skipped` }));
 
     const list = el("div", { className: "aisq-prompt-list" });
-    const prefaceEditor = el("textarea", { className: "aisq-prompt-editor aisq-preface-editor", value: chain.preface || "" });
+    const hasPreface = !!(chain.preface && chain.preface.trim());
+    const activePrefaceCount = chain.prompts.filter(p => p.includePreface !== false).length;
+    
+    const prefaceEditor = el("textarea", { 
+      className: "aisq-prompt-editor aisq-preface-editor", 
+      value: chain.preface || "",
+      placeholder: "Type a shared intro / preface here to prepend to your prompts before execution..."
+    });
     prefaceEditor.addEventListener("change", () => command("EDIT_PREFACE", { chainId: chain.id, text: prefaceEditor.value }));
+    prefaceEditor.addEventListener("input", () => {
+      chain.preface = Core.normalizeText(prefaceEditor.value);
+    });
+
+    const allIncluded = chain.prompts.every(p => p.includePreface !== false);
     const includeAllToggle = button(
-      chain.prompts.every(p => p.includePreface !== false) ? "Exclude from all" : "Include in all", 
-      () => command("TOGGLE_ALL_PREFACES", { chainId: chain.id, include: !chain.prompts.every(p => p.includePreface !== false) }),
-      "ghost"
+      allIncluded ? "Exclude from all" : "Include in all", 
+      () => command("TOGGLE_ALL_PREFACES", { chainId: chain.id, include: !allIncluded }),
+      allIncluded ? "ghost aisq-preface-on" : "ghost"
     );
-    const prefaceSummary = el("summary", { className: "aisq-prompt-head" }, [
+    includeAllToggle.title = allIncluded 
+      ? "Preface is currently enabled on all prompts in this chain. Click to exclude from all." 
+      : "Click to enable preface on all prompts in this chain.";
+
+    const prefaceBadge = el("span", { 
+      className: `aisq-preface-badge ${hasPreface ? "" : "empty"}`, 
+      text: hasPreface ? `${activePrefaceCount}/${chain.prompts.length} active` : "empty" 
+    });
+
+    const prefaceSummary = el("summary", { className: "aisq-prompt-head aisq-preface-head" }, [
       el("strong", { text: "Preface (Intro)" }),
+      prefaceBadge,
       includeAllToggle
     ]);
     const prefaceDetails = el("details", { className: "aisq-prompt aisq-preface-card" }, [prefaceSummary, prefaceEditor]);
-    if (chain.preface) prefaceDetails.open = true;
+    if (hasPreface) prefaceDetails.open = true;
     list.append(prefaceDetails);
 
     chain.prompts.forEach((prompt, index) => {
@@ -1311,12 +1380,15 @@
       const remove = button("Delete", () => command("DELETE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "danger ghost");
       
       const controls = [up, down, merge, remove];
+      const isIntroActive = hasPreface && prompt.includePreface !== false;
       const togglePreface = button(
-        prompt.includePreface !== false ? "Intro On" : "Intro Off", 
+        !hasPreface ? "Intro (No Preface)" : (isIntroActive ? "✓ Intro On" : "✕ Intro Off"), 
         () => command("TOGGLE_PROMPT_PREFACE", { chainId: chain.id, promptId: prompt.id, include: prompt.includePreface === false }),
-        prompt.includePreface !== false ? "ghost aisq-preface-on" : "ghost aisq-preface-off"
+        !hasPreface ? "ghost aisq-preface-disabled" : (isIntroActive ? "ghost aisq-preface-on" : "ghost aisq-preface-off")
       );
-      togglePreface.title = "Toggle whether the preface is prepended to this prompt before submission";
+      togglePreface.title = !hasPreface 
+        ? "No preface configured in Preface (Intro) above." 
+        : (isIntroActive ? "Preface is currently prepended to this prompt. Click to turn off." : "Preface is excluded from this prompt. Click to turn on.");
       controls.unshift(togglePreface);
       
       const runNext = button("Run Next", () => command("REORDER_TO_NEXT", { chainId: chain.id, promptId: prompt.id }), "ghost");
@@ -1331,6 +1403,22 @@
       const isPaused = isRunning && !state.runner.enabled;
       let highlightClass = "";
       if (isRunning) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
+      
+      let prefaceBanner = null;
+      if (hasPreface) {
+        if (isIntroActive) {
+          const snippet = chain.preface.length > 95 ? chain.preface.slice(0, 92) + "..." : chain.preface;
+          prefaceBanner = el("div", { className: "aisq-preface-attached-banner", title: `Prepended preface:\n${chain.preface}` }, [
+            el("span", { className: "aisq-preface-attached-tag", text: "📌 Intro Attached:" }),
+            el("span", { className: "aisq-preface-attached-text", text: snippet })
+          ]);
+        } else {
+          prefaceBanner = el("div", { className: "aisq-preface-detached-banner" }, [
+            el("span", { className: "aisq-preface-detached-tag", text: "⚠️ Standalone Prompt (Intro excluded)" })
+          ]);
+        }
+      }
+
       const details = el("details", { className: `aisq-prompt aisq-${prompt.status}${highlightClass}` });
       if (isRunning || prompt.status === "error") details.open = true;
       const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), ...controls]);
@@ -1365,6 +1453,7 @@
       
       details.append(
         summary,
+        prefaceBanner,
         editor,
         prompt.error ? el("div", { className: "aisq-error", text: prompt.error }) : null,
         prompt.status === "complete" ? button("Reset from here", () => {
@@ -1610,6 +1699,17 @@
       .aisq-prompt.aisq-skipped { border-left-color:#89838f; opacity:.7; }
       .aisq-prompt.aisq-highlight-running { border-left-color:#55e69b; background:rgba(85,230,155,0.05); }
       .aisq-prompt.aisq-highlight-paused { border-left-color:#f6c032; background:rgba(246,192,50,0.05); }
+      .aisq-preface-card { border-left-color:#7357ff; background:#1a1922; }
+      .aisq-preface-editor { min-height:72px; }
+      .aisq-preface-badge { font-size:11px; padding:2px 7px; border-radius:999px; background:#2b2838; color:#b9a9ff; font-weight:normal; margin-left:4px; }
+      .aisq-preface-badge.empty { background:#24222c; color:#85818f; }
+      .aisq-preface-on { color:#55e69b !important; border-color:rgba(85,230,155,0.4) !important; background:rgba(85,230,155,0.08) !important; }
+      .aisq-preface-off { color:#85818f !important; border-color:rgba(255,255,255,0.1) !important; }
+      .aisq-preface-disabled { color:#6b6777 !important; border-color:rgba(255,255,255,0.06) !important; opacity:0.75; }
+      .aisq-preface-attached-banner { display:flex; align-items:flex-start; gap:6px; padding:6px 9px; margin-bottom:7px; background:rgba(115,87,255,0.08); border:1px dashed rgba(115,87,255,0.3); border-radius:7px; font-size:11px; color:#c4b5fd; line-height:1.35; }
+      .aisq-preface-attached-tag { font-weight:600; white-space:nowrap; color:#a78bfa; }
+      .aisq-preface-attached-text { overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word; }
+      .aisq-preface-detached-banner { display:flex; align-items:center; gap:6px; padding:5px 9px; margin-bottom:7px; background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.12); border-radius:7px; font-size:11px; color:#948fa3; }
       .aisq-prompt-head { display:flex; gap:5px; align-items:center; cursor:pointer; list-style:none; }
       .aisq-prompt-head::-webkit-details-marker { display:none; }
       .aisq-prompt-head strong { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
