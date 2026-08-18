@@ -1091,7 +1091,7 @@
     const draft = el("textarea", {
       className: "aisq-draft",
       value: state.ui.draft,
-      placeholder: "Paste here. Each paste becomes one chain; Stage, P/R IDs, Prompt headings, delimiters and substantial numbered blocks are detected.",
+      placeholder: "Paste here. Stage/Phase headings, IDs, or delimiters are detected automatically.",
       on: {
         input: (event) => {
           state.ui.draft = event.target.value;
@@ -1102,13 +1102,6 @@
             const parsed = Core.parsePromptPack(state.ui.draft, state.ui.splitStrategy);
             meter.textContent = `${parsed.prompts.length} prompt${parsed.prompts.length === 1 ? "" : "s"} · ${parsed.strategy}`;
           }
-        },
-        paste: (event) => {
-          const text = event.clipboardData?.getData("text/plain") || "";
-          if (!text.trim()) return;
-          event.preventDefault();
-          state.ui.draft = text;
-          importText(text);
         }
       }
     });
@@ -1136,7 +1129,7 @@
       if (result.ok) void startRunner();
     };
     return el("div", { className: "aisq-section" }, [
-      el("p", { className: "aisq-copy", text: "Every intentional paste creates one independently editable chain and appends it to the execution stack. Adding a chain never resets a running stack." }),
+      el("p", { className: "aisq-copy", text: "Paste a sequence of prompts. Click 'Add chain' to append it to the execution stack." }),
       field("Split strategy", strategy),
       field("Paste intake", draft),
       meter,
