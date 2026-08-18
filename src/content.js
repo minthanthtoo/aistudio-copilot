@@ -1332,7 +1332,11 @@
     for (const tab of ["build", "prompts", "run", "settings"]) tabs.append(el("button", { className: `aisq-tab ${state.settings.activeTab === tab ? "active" : ""}`, type: "button", text: tab, role: "tab", ariaSelected: state.settings.activeTab === tab, on: { click: () => mutate(() => { state.settings.activeTab = tab; }) } }));
     const body = state.settings.activeTab === "build" ? renderBuild() : state.settings.activeTab === "prompts" ? renderPrompts() : state.settings.activeTab === "run" ? renderRun() : renderSettings();
     const alert = state.runner.lastError && state.settings.activeTab !== "run" ? el("div", { className: "aisq-error aisq-global-error", text: state.runner.lastError, role: "alert" }) : null;
-    panel.replaceChildren(header, tabs, alert, body, el("footer", { className: "aisq-footer" }, [el("span", { text: `v${EXTENSION_VERSION} · ` }), statusLine]));
+    const scrollActions = el("div", { className: "aisq-scroll-actions" }, [
+      el("button", { className: "aisq-float-btn", text: "▲", title: "Scroll to top", type: "button", on: { click: () => panel.scrollTo({ top: 0, behavior: "smooth" }) } }),
+      el("button", { className: "aisq-float-btn", text: "▼", title: "Scroll to bottom", type: "button", on: { click: () => panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" }) } })
+    ]);
+    panel.replaceChildren(header, tabs, alert, body, scrollActions, el("footer", { className: "aisq-footer" }, [el("span", { text: `v${EXTENSION_VERSION} · ` }), statusLine]));
   }
 
   function installStyles() {
@@ -1405,6 +1409,9 @@
       .aisq-check small { grid-column:2; color:#9995a5; }
       .aisq-shortcuts { display:flex; flex-direction:column; gap:5px; padding:11px; border-radius:10px; background:#1d1c22; }
       .aisq-footer { position:sticky; bottom:0; padding:8px 16px; border-top:1px solid #ffffff12; background:#15151af2; color:#85818f; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .aisq-scroll-actions { position:fixed; right:30px; bottom:120px; display:flex; flex-direction:column; gap:8px; z-index:2147483647; }
+      .aisq-float-btn { width:32px; height:32px; border-radius:50%; border:1px solid #ffffff20; background:rgba(21,21,26,0.9); color:#cfcbd9; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.5); backdrop-filter:blur(4px); font-size:12px; display:grid; place-items:center; transition:background 0.2s, border-color 0.2s; }
+      .aisq-float-btn:hover { background:rgba(45,42,58,0.9); border-color:#7357ff; }
     `;
     shadow.append(style);
   }
