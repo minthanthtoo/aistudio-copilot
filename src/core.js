@@ -74,7 +74,7 @@
   }
 
   function splitNumberedBlocks(text) {
-    const { lines, matches } = mapLinesOutsideFences(text, (line) => /^\s*\d+[.)]\s+\S/.test(line));
+    const { lines, matches } = mapLinesOutsideFences(text, (line) => /^[ \t]{0,3}\d+[.)]\s+\S/.test(line));
     if (matches.length < 3) return null;
     const parts = matches.map((start, index) => {
       const end = matches[index + 1] ?? lines.length;
@@ -110,9 +110,9 @@
     if (!text) return { strategy: "empty", prompts: [] };
 
     const strategies = {
-      stage: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?(?:Stage|Phase|Step|Round|Part)\s+\d+\b/i),
-      id: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?(?:\[)?(?:P|R)\d{3}(?:\])?\b/i),
-      prompt: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?Prompt\s+\d+\b/i),
+      stage: () => splitAtHeaders(text, /^[ \t]{0,3}(?:#{1,6}\s*)?(?:Stage|Phase|Step|Round|Part)\s+\d+\b/i),
+      id: () => splitAtHeaders(text, /^[ \t]{0,3}(?:#{1,6}\s*)?(?:\[)?(?:P|R)\d{3}(?:\])?\b/i),
+      prompt: () => splitAtHeaders(text, /^[ \t]{0,3}(?:#{1,6}\s*)?Prompt\s+\d+\b/i),
       delimiter: () => splitAtDelimiters(text),
       numbered: () => splitNumberedBlocks(text),
       single: () => [text]
