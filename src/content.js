@@ -854,6 +854,8 @@
         state.runner.baselineTurnCount = Math.min(state.runner.baselineTurnCount, host.turnCount);
         state.runner.phase = host.retryVisible ? PHASES.RETRY_WAIT : PHASES.AWAITING;
         state.runner.nextActionAt = host.retryVisible ? Date.now() : null;
+        // Reset the submission clock so timeouts don't immediately fire based on original submit time
+        state.runner.submittedAt = Date.now();
       } else state.runner.phase = PHASES.READY;
       state.runner.lastError = null;
       addHistory("runner_resumed", "Runner resumed");
@@ -884,6 +886,8 @@
       state.runner.leaseUpdatedAt = Core.nowISO();
       state.runner.phase = host.retryVisible ? PHASES.RETRY_WAIT : PHASES.AWAITING;
       state.runner.nextActionAt = host.retryVisible ? Date.now() : null;
+      // Reset the submission clock so timeouts don't fire based on original submit time
+      state.runner.submittedAt = Date.now();
       state.runner.lastError = null;
       addHistory("runner_recovered", "Pending runner explicitly recovered in its bound app");
     });
