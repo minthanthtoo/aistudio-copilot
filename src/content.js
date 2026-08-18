@@ -15,7 +15,7 @@
   const LEASE_MS = 20_000;
   const PHASES = Core.PHASES;
   const EXTENSION_VERSION = chrome.runtime.getManifest?.().version || "dev";
-  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const clone = globalThis.structuredClone || ((v) => JSON.parse(JSON.stringify(v)));
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const textOf = (node) => String(node?.textContent || "").replace(/\s+/g, " ").trim();
 
@@ -47,7 +47,23 @@
     return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) !== 0 && rect.width > 0 && rect.height > 0;
   }
 
+  let deepQueryCache = new Map();
+  let deepQueryLastSweep = Date.now();
+
   function deepQueryAll(selector, root = document) {
+    const now = Date.now();
+    if (now - deepQueryLastSweep > 1000) {
+      deepQueryCache.clear();
+      deepQueryLastSweep = now;
+    }
+    const rootKey = root === document ? 'doc' : (root.id || 'scoped');
+    const key = `${selector}@${rootKey}`;
+    const cached = deepQueryCache.get(key);
+    if (cached && now - cached.time < 250) {
+      // Filter out elements that were removed from the DOM since they were cached
+      return cached.results.filter(el => el.isConnected);
+    }
+
     const results = [];
     const seen = new Set();
     function crawl(node) {
@@ -68,6 +84,7 @@
       }
     }
     crawl(root);
+    deepQueryCache.set(key, { time: now, results });
     return results;
   }
 
@@ -122,7 +139,7 @@
   let activeCountdown = null;
 
   function stashText() {
-    const ta = scanHost().textarea;
+    const ta = scanHostCached().textarea;
     if (!ta) return;
     const original = ta.value ?? "";
     if (!original.trim()) return;
@@ -132,7 +149,7 @@
 
   function restoreText() {
     if (!textStash) return;
-    const ta = scanHost().textarea;
+    const ta = scanHostCached().textarea;
     if (!ta) return;
     setNativeValue(ta, textStash.original);
     try {
@@ -169,59 +186,62 @@
     return null;
   }
 
+  let cachedChatContainer = null;
+  function getChatContainer() {
+    if (cachedChatContainer && cachedChatContainer.isConnected) return cachedChatContainer;
+    cachedChatContainer = document.querySelector('ms-code-assistant-chat') || null;
+    return cachedChatContainer;
+  }
+
   function scanHost() {
+    const chat = getChatContainer();
+
     // ── Textarea ─────────────────────────────────────────────────────────────
-    // Primary selector uses stable CSS class (.cdk-textarea-autosize), fallback to placeholder
-    const editorTextarea =
-      visibleAll('ms-code-assistant-chat textarea.cdk-textarea-autosize')[0] ||
-      visibleAll('ms-code-assistant-chat textarea[placeholder="Make changes, add new features, ask for anything"]')[0] ||
-      visibleAll('textarea.cdk-textarea-autosize')[0] ||
-      null;
+    let editorTextarea = null;
+    if (chat) {
+      editorTextarea = Array.from(chat.querySelectorAll('textarea.cdk-textarea-autosize, textarea[placeholder*="Make changes"]'))
+        .find(el => el.offsetParent !== null || visible(el)) || null;
+    }
     const startTextarea = visibleAll('textarea[placeholder="Describe an app and let Gemini do the rest"]')[0] || null;
     const mode = editorTextarea ? "editor" : startTextarea ? "start" : "unsupported";
     const textarea = editorTextarea || startTextarea;
 
     // ── Send / Stop button ────────────────────────────────────────────────────
-    // In the editor the send button (button.send-button) DOUBLES as the stop
-    // button: when AI is generating it gains the CSS class "running" and shows
-    // a stop-square icon. There is no separate stop button in the DOM.
-    const sendBtn = mode === "editor"
-      ? visibleAll('ms-code-assistant-chat button.send-button')[0] ||
-        visibleAll('ms-code-assistant-chat button[aria-label="Send"]')[0] ||
-        visibleAll('button.send-button')[0] || null
-      : null;
+    let sendBtn = null;
+    if (mode === "editor" && chat) {
+      sendBtn = Array.from(chat.querySelectorAll('button.send-button, button[aria-label="Send"]'))
+        .find(el => el.offsetParent !== null || visible(el)) || null;
+    }
 
-    // Thinking indicator text (e.g. "Tinkering", "Tweaking", "Sculpting")
-    const thinkingNode = visibleAll("ms-thinking-indicator, .thinking-text")[0] || null;
+    // Thinking indicator text
+    const thinkingNode = deepQueryAll("ms-thinking-indicator, .thinking-text")[0] || null;
     const thinkingText = thinkingNode ? textOf(thinkingNode) : "";
 
     // "running" class on the send button is the most reliable busy signal.
-    // ms-thinking-indicator and ms-gradient-spinner are secondary checks.
     const isRunning = !!(sendBtn?.classList.contains("running") ||
       thinkingNode ||
-      visibleAll("ms-gradient-spinner")[0]);
+      deepQueryAll("ms-gradient-spinner")[0]);
 
     // When running: submit = null (can't submit again), stop = the running button.
-    // When idle:    submit = the send button, stop = null.
-    const stop = isRunning ? (sendBtn || visibleAll('button.send-button.running, button[aria-label*="Stop"]')[0] || null) : null;
+    const stop = isRunning ? (sendBtn || deepQueryAll('button.send-button.running, button[aria-label*="Stop"]')[0] || null) : null;
     const submit = mode === "editor"
       ? (isRunning ? null : sendBtn)
       : mode === "start" ? visibleAll("button.build-button")[0] || exactButton("Build") : null;
 
     // ── Turns ─────────────────────────────────────────────────────────────────
-    // Actual DOM: .turn-container > .turn-group > .turn
-    // User input turns have class "input"; AI response turns do NOT.
-    // We count only AI response turns so baselineTurnCount / newTurn are correct.
-    const turns = visibleAll("ms-code-assistant-chat .turn:not(.input)");
+    let turns = [];
+    if (chat) {
+      const allTurns = Array.from(chat.querySelectorAll('.turn:not(.input)'));
+      // Only keep turns that are actually visible (some might be hidden templates)
+      turns = allTurns.filter(t => t.offsetParent !== null || visible(t));
+    }
     const lastTurn = turns.at(-1) || null;
     const lastHeader = textOf(lastTurn?.querySelector(".turn-header"));
     const retry = lastTurn ? findRetryButton(lastTurn) : null;
     const errorText = textOf(lastTurn?.querySelector("ms-error-callout, ms-chat-turn-error"));
 
     // ── Busy ──────────────────────────────────────────────────────────────────
-    // Primary: send-button.running / ms-thinking-indicator.
-    // Secondary: "Running for Xs" in turn header or lifecycle text in turn body.
-    const transientActivity = lastTurn ? Array.from(lastTurn.querySelectorAll("*")).some((node) => visible(node) && /^(?:Assembling|Thinking|Applying file changes|Generating(?: design)? previews?)(?:…|\.\.\.)?$/i.test(textOf(node))) : false;
+    const transientActivity = lastTurn ? Array.from(lastTurn.querySelectorAll("*")).some((node) => /^(?:Assembling|Thinking|Applying file changes|Generating(?: design)? previews?)(?:…|\.\.\.)?$/i.test(textOf(node))) : false;
     const busy = isRunning || /\bRunning for\s+\d+s\b/i.test(lastHeader) || transientActivity;
 
     // ── Blocking dialogs ─────────────────────────────────────────────────────
@@ -244,6 +264,17 @@
       blocked: !!blockingDialog,
       blockedReason: blockingDialog ? textOf(blockingDialog).slice(0, 180) : ""
     });
+  }
+
+  let cachedHostSnapshot = null;
+  let cachedHostSnapshotTime = 0;
+
+  function scanHostCached() {
+    const now = Date.now();
+    if (cachedHostSnapshot && now - cachedHostSnapshotTime < 250) return cachedHostSnapshot;
+    cachedHostSnapshot = scanHost();
+    cachedHostSnapshotTime = now;
+    return cachedHostSnapshot;
   }
 
   function selectedChain() { return Core.getSelectedChain(state); }
@@ -272,7 +303,7 @@
 
   function addHistory(kind, message, data = null) {
     state.history.push({ at: Core.nowISO(), kind, message, data });
-    state.history = state.history.slice(-300);
+    if (state.history.length > 350) state.history = state.history.slice(-300);
   }
 
   function touchState() {
@@ -315,7 +346,12 @@
         return false;
       }
       const snapshot = clone(state);
-      await chrome.storage.local.set({ [STORAGE_KEY]: snapshot, [LEGACY_STORAGE_KEY]: snapshot });
+      const payload = { [STORAGE_KEY]: snapshot };
+      if (!globalThis.__AISQ_LEGACY_WRITTEN__) {
+        payload[LEGACY_STORAGE_KEY] = snapshot;
+        globalThis.__AISQ_LEGACY_WRITTEN__ = true;
+      }
+      await chrome.storage.local.set(payload);
       persistedRevision = Number(snapshot.revision || 0);
       return true;
     };
@@ -1246,11 +1282,11 @@
       on: {
         input: (event) => {
           state.ui.draft = event.target.value;
-          state.ui.detectedStrategy = Core.parsePromptPack(state.ui.draft, state.ui.splitStrategy).strategy;
+          const parsed = Core.parsePromptPack(state.ui.draft, state.ui.splitStrategy);
+          state.ui.detectedStrategy = parsed.strategy;
           scheduleSave();
           const meter = shadow.getElementById("aisq-detect-meter");
           if (meter) {
-            const parsed = Core.parsePromptPack(state.ui.draft, state.ui.splitStrategy);
             meter.textContent = `${parsed.prompts.length} prompt${parsed.prompts.length === 1 ? "" : "s"} · ${parsed.strategy}`;
           }
         }
@@ -2093,7 +2129,7 @@
     tickIntervalId = setInterval(() => void tick(), TICK_MS);
     globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
     void tick();
-    globalThis.__aisq = Object.freeze({ show: () => mutate(() => { state.settings.panelOpen = true; }), hide: () => mutate(() => { state.settings.panelOpen = false; }), scan: () => scanHost(), state: () => { Core.syncLegacyAliases(state); return clone(state); }, diagnostics: () => clone(createDiagnosticSnapshot()), tick: () => tick(), save: () => saveNow(), importText });
+    globalThis.__aisq = Object.freeze({ show: () => mutate(() => { state.settings.panelOpen = true; }), hide: () => mutate(() => { state.settings.panelOpen = false; }), scan: () => scanHostCached(), state: () => { Core.syncLegacyAliases(state); return clone(state); }, diagnostics: () => clone(createDiagnosticSnapshot()), tick: () => tick(), save: () => saveNow(), importText });
   }
 
   void init();
