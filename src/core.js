@@ -653,8 +653,43 @@
       chain.updatedAt = nowISO();
     } else if (type === "EXTRACT_CHAIN_PREFACE") {
       if (!chain) return reject("Chain not found");
+      const stagePattern = /^[ \t]{0,3}(?:#{1,6}\s*)?(?:(?:Stage|Phase|Step|Round|Part)\s+\d+|(?:\[)?(?:P|R)\d{3}(?:\])?|Prompt\s+\d+)\b/im;
       const texts = chain.prompts.map((p) => p.text);
-      const extracted = extractCommonPreface(chain.preface, texts);
+      let extracted = extractCommonPreface(chain.preface, texts);
+
+      if (!extracted.preface && chain.prompts.length > 1) {
+        const p1 = chain.prompts[0];
+        const p2 = chain.prompts[1];
+        
+        // Case 1: Prompt 1 has no stage header, but subsequent prompts have stage headers
+        if (!stagePattern.test(p1.text) && stagePattern.test(p2.text)) {
+          chain.preface = p1.text.trim();
+          chain.prompts.shift();
+          chain.prompts.forEach((p, idx) => {
+            p.label = labelForPrompt(p.text, idx);
+            p.includePreface = true;
+          });
+          chain.updatedAt = nowISO();
+          return;
+        }
+
+        // Case 2: Prompt 1 has leading conversational preamble before its stage header
+        const match = p1.text.match(stagePattern);
+        if (match && match.index > 15) {
+          const intro = p1.text.slice(0, match.index).trim();
+          const rest = p1.text.slice(match.index).trim();
+          if (intro.length >= 15 && rest.length >= 15) {
+            chain.preface = intro;
+            p1.text = rest;
+            p1.label = labelForPrompt(p1.text, 0);
+            p1.includePreface = true;
+            chain.prompts.forEach((p) => { p.includePreface = true; });
+            chain.updatedAt = nowISO();
+            return;
+          }
+        }
+      }
+
       if (extracted.preface && extracted.preface !== chain.preface) {
         chain.preface = extracted.preface;
         chain.prompts.forEach((p, idx) => {
@@ -664,6 +699,18 @@
         });
         chain.updatedAt = nowISO();
       }
+    } else if (type === "MOVE_PARAGRAPH_TO_PREFACE") {
+      if (!chain) return reject("Chain not found");
+      const prompt = chain.prompts.find((p) => p.id === payload.promptId);
+      if (!prompt) return reject("Prompt not found");
+      const paras = prompt.text.split(/\n\s*\n/);
+      if (paras.length < 2) return reject("Prompt only has one paragraph");
+      const firstPara = paras.shift().trim();
+      prompt.text = paras.join("\n\n").trim();
+      prompt.label = labelForPrompt(prompt.text, chain.prompts.indexOf(prompt));
+      chain.preface = chain.preface ? `${chain.preface}\n\n${firstPara}`.trim() : firstPara;
+      chain.prompts.forEach((p) => { p.includePreface = true; });
+      chain.updatedAt = nowISO();
     } else if (type === "ADD_PROMPT") {
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id)) return reject("The active chain has a pending prompt");

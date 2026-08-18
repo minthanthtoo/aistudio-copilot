@@ -903,7 +903,7 @@
   }
 
   function pauseRunner() {
-    if (state.runner.enabled && !leaseToken) {
+    if (state.runner.enabled && !leaseToken && state.runner.ownerTabId && state.runner.ownerTabId !== tabId) {
       mutate(() => { state.runner.lastError = "Only the tab that owns this runner can pause it"; });
       return;
     }
@@ -912,9 +912,9 @@
     mutate(() => {
       state.runner.enabled = false;
       state.runner.phase = PHASES.PAUSED;
-      state.runner.ownerTabId = retainPendingLease ? tabId : null;
+      state.runner.ownerTabId = retainPendingLease ? (state.runner.ownerTabId || tabId) : null;
       state.runner.leaseUpdatedAt = retainPendingLease ? Core.nowISO() : null;
-      addHistory("runner_paused", "Runner paused");
+      addHistory("runner_paused", "Paused runner");
     });
   }
 
@@ -1409,6 +1409,12 @@
       text: hasPreface ? `${activePrefaceCount}/${chain.prompts.length} active · ${chain.preface.length}c` : "empty" 
     });
 
+    const extractIntroBtn = !hasPreface
+      ? button("⚡ Extract Intro", () => {
+          command("EXTRACT_CHAIN_PREFACE", { chainId: chain.id });
+        }, "ghost aisq-btn-extract", "Auto-extract shared intro from prompts into Preface")
+      : null;
+
     const clearPreface = hasPreface
       ? button("Clear", () => {
           if (confirm("Clear preface text for this chain?")) command("EDIT_PREFACE", { chainId: chain.id, text: "" });
@@ -1418,6 +1424,7 @@
     const prefaceSummary = el("summary", { className: "aisq-prompt-head aisq-preface-head" }, [
       el("strong", { text: "Preface (Intro)" }),
       prefaceBadge,
+      ...(extractIntroBtn ? [extractIntroBtn] : []),
       includeAllToggle,
       ...(clearPreface ? [clearPreface] : [])
     ]);
@@ -1519,15 +1526,23 @@
       });
       summary.addEventListener("dblclick", triggerJump);
       
-      details.append(
+      const moveIntroBtn = !hasPreface && prompt.text.includes("\n\n")
+        ? button("✂️ Move 1st para to Preface", () => {
+            command("MOVE_PARAGRAPH_TO_PREFACE", { chainId: chain.id, promptId: prompt.id });
+          }, "ghost aisq-move-intro-btn", "Move the first paragraph of this prompt into the shared Preface")
+        : null;
+
+      const detailsChildren = [
         summary,
         prefaceBanner,
+        moveIntroBtn,
         editor,
         prompt.error ? el("div", { className: "aisq-error", text: prompt.error }) : null,
         prompt.status === "complete" ? button("Reset from here", () => {
           if (confirm(`Reset ${prompt.label} and all later prompts?`)) command("RESET_FROM_PROMPT", { chainId: chain.id, promptId: prompt.id });
         }, "ghost") : null
-      );
+      ].filter(Boolean);
+      details.append(...detailsChildren);
       list.append(details);
     });
     const addPromptText = el("input", { className: "aisq-input", placeholder: "New prompt text" });
@@ -1649,8 +1664,7 @@
       ? button("🔁 Recover", () => void recoverPendingHere(), "primary aisq-btn-highlight", "Explicitly recover the pending runner in this AI Studio app")
       : !state.runner.enabled
         ? button(startLabel, () => { void (state.runner.phase === PHASES.PAUSED ? resumeRunner() : startRunner("stack")); }, "primary aisq-btn-highlight")
-        : leaseToken ? button("⏸️ Pause", pauseRunner, "aisq-btn-pause") : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
-    if (state.runner.enabled && !leaseToken && !foreignPending) primaryControl.disabled = true;
+        : (leaseToken || state.runner.ownerTabId === tabId || !state.runner.ownerTabId) ? button("⏸️ Pause", pauseRunner, "aisq-btn-pause") : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
 
     const host = scanHost();
     const isHostBusy = host.busy || !!host.stop;
@@ -1835,6 +1849,10 @@
       .aisq-preface-editor { min-height:72px; }
       .aisq-preface-badge { font-size:11px; padding:2px 7px; border-radius:999px; background:#2b2838; color:#b9a9ff; font-weight:normal; margin-left:4px; }
       .aisq-preface-badge.empty { background:#24222c; color:#85818f; }
+      .aisq-btn-extract { color:#c4b5fd !important; border-color:rgba(115,87,255,0.4) !important; background:rgba(115,87,255,0.12) !important; font-size:11px !important; }
+      .aisq-btn-extract:hover { background:rgba(115,87,255,0.25) !important; color:#fff !important; }
+      .aisq-move-intro-btn { font-size:11px !important; margin-bottom:6px; color:#a78bfa !important; border:1px dashed rgba(115,87,255,0.3) !important; padding:4px 8px !important; align-self:flex-start; }
+      .aisq-move-intro-btn:hover { background:rgba(115,87,255,0.15) !important; color:#fff !important; }
       .aisq-preface-on { color:#55e69b !important; border-color:rgba(85,230,155,0.4) !important; background:rgba(85,230,155,0.08) !important; }
       .aisq-preface-off { color:#85818f !important; border-color:rgba(255,255,255,0.1) !important; }
       .aisq-preface-disabled { color:#6b6777 !important; border-color:rgba(255,255,255,0.06) !important; opacity:0.75; }
