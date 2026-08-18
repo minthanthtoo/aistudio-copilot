@@ -1,8 +1,8 @@
 {
-  "name": "google-aistudio-queue-pilot",
+  "name": "aistudio-copilot",
   "version": "0.3.0",
   "private": true,
-  "description": "Manifest V3 queue automation for Google AI Studio Apps",
+  "description": "A prompt engineering assistant and queue automation copilot for Google AI Studio.",
   "scripts": {
     "icons": "node scripts/generate-icons.cjs",
     "check": "node --check src/core.js && node --check src/content.js && node --check src/background.js && node --check scripts/generate-icons.cjs && node --check scripts/package-extension.cjs",

@@ -115,12 +115,12 @@ test("content script mounts an isolated shadow UI and toggles without TrustedHTM
   assert.ok(root);
   assert.ok(root.shadowRoot);
   assert.equal(root.shadowRoot.getElementById("aisq-panel").hidden, true);
-  assert.equal(root.shadowRoot.getElementById("aisq-panel").getAttribute("aria-label"), "AI Studio Queue Pilot");
-  assert.equal(root.shadowRoot.getElementById("aisq-bubble").getAttribute("aria-label"), "Toggle AI Studio Queue Pilot");
+  assert.equal(root.shadowRoot.getElementById("aisq-panel").getAttribute("aria-label"), "AI Studio Copilot");
+  assert.equal(root.shadowRoot.getElementById("aisq-bubble").getAttribute("aria-label"), "Toggle AI Studio Copilot");
   root.shadowRoot.getElementById("aisq-bubble").click();
   await wait(40);
   assert.equal(root.shadowRoot.getElementById("aisq-panel").hidden, false);
-  assert.match(root.shadowRoot.textContent, /Queue Pilot/);
+  assert.match(root.shadowRoot.textContent, /Copilot/);
   assert.equal(root.shadowRoot.querySelectorAll('[role="tab"]').length, 5);
 });
 

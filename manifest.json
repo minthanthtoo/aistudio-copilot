@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Studio Queue Pilot",
+  "name": "AI Studio Copilot",
   "version": "0.3.0",
-  "description": "Reliable prompt queues, state-aware submission, retry recovery, and ZIP export for Google AI Studio Apps.",
+  "description": "A prompt engineering assistant and queue automation copilot for Google AI Studio.",
   "icons": {
     "16": "assets/icon16.png",
     "32": "assets/icon32.png",
@@ -15,7 +15,7 @@
     "service_worker": "src/background.js"
   },
   "action": {
-    "default_title": "Toggle AI Studio Queue Pilot",
+    "default_title": "Toggle AI Studio Copilot",
     "default_icon": {
       "16": "assets/icon16.png",
       "32": "assets/icon32.png"
@@ -27,7 +27,7 @@
         "default": "Alt+Shift+A",
         "mac": "Alt+Shift+A"
       },
-      "description": "Toggle Queue Pilot"
+      "description": "Toggle Copilot"
     }
   },
   "content_scripts": [

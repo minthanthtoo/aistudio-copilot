@@ -952,7 +952,7 @@
       }
       requestRender();
     } catch (error) {
-      markPromptError(`Queue Pilot error: ${error.message}`);
+      markPromptError(`Copilot error: ${error.message}`);
       scheduleSave();
     } finally {
       tickBusy = false;
@@ -1665,7 +1665,7 @@
       exportStep ? el("div", { className: "aisq-meter", text: exportStep }) : null,
       el("div", { className: "aisq-actions" }, [
         button("Download ZIP", () => void downloadZip(), "ghost"),
-        button("Diagnostics", downloadDiagnostics, "ghost", "Download redacted Queue Pilot diagnostics")
+        button("Diagnostics", downloadDiagnostics, "ghost", "Download redacted Copilot diagnostics")
       ]),
       el("p", { className: "aisq-help", text: "The runner submits one prompt at a time, waits for a newer stable assistant turn, then advances through the editable stack without wrapping." })
     ]);
@@ -1820,12 +1820,12 @@
 
     const header = el("header", { className: "aisq-header" }, [
       el("div", {}, [
-        el("strong", { text: "Queue Pilot" }), 
+        el("strong", { text: "Copilot" }), 
         el("div", { className: "aisq-subtitle", text: "Google AI Studio Apps · stacked chains" })
       ]), 
       el("div", { className: "aisq-window-controls" }, [
-        button(state.settings.isMinimized ? "◱" : "—", () => mutate(() => { state.settings.isMinimized = !state.settings.isMinimized; }), "icon", state.settings.isMinimized ? "Maximize Queue Pilot" : "Minimize Queue Pilot"),
-        button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Queue Pilot")
+        button(state.settings.isMinimized ? "◱" : "—", () => mutate(() => { state.settings.isMinimized = !state.settings.isMinimized; }), "icon", state.settings.isMinimized ? "Maximize Copilot" : "Minimize Copilot"),
+        button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Copilot")
       ])
     ]);
     
@@ -1838,7 +1838,7 @@
       promptBadge = ` (${displayIndex}/${selectedChain.prompts.length})`;
     }
 
-    const tabs = el("nav", { className: "aisq-tabs", role: "tablist", ariaLabel: "Queue Pilot sections" });
+    const tabs = el("nav", { className: "aisq-tabs", role: "tablist", ariaLabel: "Copilot sections" });
     for (const tab of ["build", "stack", "prompts", "run", "settings"]) tabs.append(el("button", { className: `aisq-tab ${state.settings.activeTab === tab ? "active" : ""}`, type: "button", text: tab === "prompts" ? `prompts${promptBadge}` : tab, role: "tab", ariaSelected: state.settings.activeTab === tab, on: { click: () => mutate(() => { state.settings.activeTab = tab; }) } }));
     const body = state.settings.activeTab === "build" ? renderBuild() : state.settings.activeTab === "stack" ? renderStack() : state.settings.activeTab === "prompts" ? renderPrompts() : state.settings.activeTab === "run" ? renderRun() : renderSettings();
     const alert = state.runner.lastError && state.settings.activeTab !== "run" ? el("div", { className: "aisq-error aisq-global-error", text: state.runner.lastError, role: "alert" }) : null;
@@ -1996,14 +1996,14 @@
     document.documentElement.append(rootHost);
     shadow = rootHost.attachShadow({ mode: "open" });
     installStyles();
-    const bubble = el("button", { type: "button", text: "AISQ", title: "Toggle AI Studio Queue Pilot", ariaLabel: "Toggle AI Studio Queue Pilot", on: { click: () => mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; }) } });
+    const bubble = el("button", { type: "button", text: "AISQ", title: "Toggle AI Studio Copilot", ariaLabel: "Toggle AI Studio Copilot", on: { click: () => mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; }) } });
     bubble.id = "aisq-bubble";
     const dlBubble = el("button", { type: "button", text: "⬇︎", title: "Download app (Alt+D)", ariaLabel: "Download app", on: { click: () => void downloadZip() } });
     dlBubble.id = "aisq-dl-bubble";
     panel = el("section");
     panel.id = "aisq-panel";
     panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-label", "AI Studio Queue Pilot");
+    panel.setAttribute("aria-label", "AI Studio Copilot");
     statusLine = el("span", { text: "ready" });
     const tooltipEl = el("div", { className: "aisq-global-tooltip" });
     shadow.append(bubble, dlBubble, panel, tooltipEl);
