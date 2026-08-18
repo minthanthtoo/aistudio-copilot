@@ -1150,19 +1150,55 @@
     if (isActive) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
     const locked = isActive && state.runner.enabled;
     const card = el("div", { className: `aisq-chain-card ${locked ? "locked" : ""} ${selected ? "selected" : ""}${highlightClass}` });
+    const previewText = (chain.preface ? chain.preface + "\n\n" : "") + chain.prompts.map((p) => p.text).join("\n\n");
+    const titlePreview = previewText.length > 800 ? previewText.slice(0, 800) + "..." : previewText;
+    
+    const nameBtn = button(`${index + 1}. ${chain.name}`, () => {
+      command("SELECT_CHAIN", { chainId: chain.id });
+      mutate(() => { state.settings.activeTab = "prompts"; });
+    }, selected ? "primary" : "ghost");
+    nameBtn.title = titlePreview;
+    
+    const runNext = button("Run Next", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Move ${chain.name} to be the immediate next target`);
+    
     const head = el("div", { className: "aisq-chain-head" }, [
-      button(`${index + 1}. ${chain.name}`, () => {
-        command("SELECT_CHAIN", { chainId: chain.id });
-        mutate(() => { state.settings.activeTab = "prompts"; });
-      }, selected ? "primary" : "ghost"),
+      nameBtn,
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
-      button("⤒", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Move ${chain.name} to top`),
+      runNext,
       button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} up`),
       button("↓", () => command("MOVE_CHAIN", { chainId: chain.id, direction: 1 }), "ghost", `Move ${chain.name} down`),
       button("⤓", () => command("MOVE_CHAIN_TO_BOTTOM", { chainId: chain.id }), "ghost", `Move ${chain.name} to bottom`),
       button(state.stackOrder.includes(chain.id) ? "–" : "+", () => command(state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", state.stackOrder.includes(chain.id) ? `Suspend ${chain.name}` : `Add ${chain.name} to stack`),
       button("✕", () => command("DELETE_CHAIN", { chainId: chain.id }), "danger ghost", `Delete ${chain.name}`)
     ]);
+    
+    head.addEventListener("dblclick", (e) => {
+      if (locked) return;
+      e.preventDefault();
+      const doJump = () => command("FORCE_JUMP_TO_CHAIN", { chainId: chain.id });
+      if (state.settings.skipJumpWarning) {
+        doJump();
+      } else {
+        const dialog = el("dialog", { className: "aisq-dialog" });
+        const title = el("h3", { text: "Jump to Chain" });
+        const msg = el("p", { text: "You are jumping to a different chain. This will mark prompts in earlier pending chains as skipped. Continue?" });
+        const label = el("label", { className: "aisq-checkbox-label" });
+        const checkbox = el("input", { type: "checkbox" });
+        label.append(checkbox, document.createTextNode(" Do not show again"));
+        
+        const cancel = button("Cancel", () => dialog.remove(), "ghost");
+        const confirmBtn = button("Continue", () => {
+          if (checkbox.checked) command("UPDATE_SETTINGS", { skipJumpWarning: true });
+          dialog.remove();
+          doJump();
+        }, "primary");
+        
+        const actions = el("div", { className: "aisq-actions" }, [cancel, confirmBtn]);
+        dialog.append(title, msg, label, actions);
+        shadow.append(dialog);
+        dialog.showModal();
+      }
+    });
     card.append(head);
     return card;
   }

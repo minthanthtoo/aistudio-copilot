@@ -513,6 +513,19 @@
         state.runner.pendingPromptId = null;
       }
       state.selectedChainId = chain.id;
+    } else if (type === "FORCE_JUMP_TO_CHAIN") {
+      if (!chain) return reject("Chain not found");
+      if (state.runner.enabled && state.runner.activeChainId !== chain.id) return reject("Pause runner to jump across chains");
+      const targetIndex = state.stackOrder.indexOf(chain.id);
+      if (targetIndex < 0) return reject("Chain is not in the stack");
+      for (let i = 0; i < targetIndex; i++) {
+        const c = getChainById(state, state.stackOrder[i]);
+        if (c) c.prompts.forEach((p) => { if (p.status === "queued" || p.status === "error") p.status = "skipped"; });
+      }
+      state.runner.activeChainId = chain.id;
+      state.runner.pendingPromptId = null;
+      state.selectedChainId = chain.id;
+      chain.updatedAt = nowISO();
     } else if (type === "MOVE_CHAIN_TO_BOTTOM") {
       if (!chain) return reject("Chain not found");
       if (state.runner.enabled && chain.id === state.runner.activeChainId) return reject("The running chain is locked");
