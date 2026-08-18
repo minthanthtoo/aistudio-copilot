@@ -483,6 +483,11 @@
         state.runner.pendingPromptId = null;
       }
       state.selectedChainId = chain.id;
+    } else if (type === "MOVE_CHAIN_TO_BOTTOM") {
+      if (!chain) return reject("Chain not found");
+      if (state.runner.enabled && chain.id === state.runner.activeChainId) return reject("The running chain is locked");
+      state.stackOrder = state.stackOrder.filter((id) => id !== chain.id);
+      state.stackOrder.push(chain.id);
     } else if (type === "DELETE_CHAIN") {
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id) || (state.runner.enabled && chain.id === state.runner.activeChainId)) return reject("Pause before deleting the active chain");

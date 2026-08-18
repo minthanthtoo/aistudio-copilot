@@ -1154,10 +1154,11 @@
     const head = el("div", { className: "aisq-chain-head" }, [
       button(`${index + 1}. ${chain.name}`, () => command("SELECT_CHAIN", { chainId: chain.id }), selected ? "primary" : "ghost"),
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
-      button("⚡", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Run ${chain.name} next`),
-      button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} earlier`),
-      button("↓", () => command("MOVE_CHAIN", { chainId: chain.id, direction: 1 }), "ghost", `Move ${chain.name} later`),
-      button(state.stackOrder.includes(chain.id) ? "–" : "+", () => command(state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", state.stackOrder.includes(chain.id) ? `Remove ${chain.name} from stack` : `Add ${chain.name} to stack`),
+      button("⤒", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Move ${chain.name} to top`),
+      button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} up`),
+      button("↓", () => command("MOVE_CHAIN", { chainId: chain.id, direction: 1 }), "ghost", `Move ${chain.name} down`),
+      button("⤓", () => command("MOVE_CHAIN_TO_BOTTOM", { chainId: chain.id }), "ghost", `Move ${chain.name} to bottom`),
+      button(state.stackOrder.includes(chain.id) ? "–" : "+", () => command(state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", state.stackOrder.includes(chain.id) ? `Suspend ${chain.name}` : `Add ${chain.name} to stack`),
       button("✕", () => command("DELETE_CHAIN", { chainId: chain.id }), "danger ghost", `Delete ${chain.name}`)
     ]);
     card.append(head);
@@ -1208,15 +1209,24 @@
       const down = button("↓", () => command("MOVE_PROMPT", { chainId: chain.id, promptId: prompt.id, direction: 1 }), "ghost", `Move ${prompt.label} later`);
       const merge = button("Merge", () => command("MERGE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "ghost");
       const remove = button("Delete", () => command("DELETE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "danger ghost");
-      [up, down, merge, remove].forEach((control) => { control.disabled = locked || prompt.status === "skipped"; });
-      list.append(el("div", { className: `aisq-prompt aisq-${prompt.status}` }, [
-        el("div", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), up, down, merge, remove]),
+      [up, down, merge, remove].forEach((control) => { 
+        control.disabled = locked || prompt.status === "skipped";
+        control.addEventListener("click", (e) => e.stopPropagation());
+      });
+      const isRunning = state.runner.pendingPromptId === prompt.id;
+      const details = el("details", { className: `aisq-prompt aisq-${prompt.status}` });
+      if (isRunning || prompt.status === "error") details.open = true;
+      const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), up, down, merge, remove]);
+      
+      details.append(
+        summary,
         editor,
         prompt.error ? el("div", { className: "aisq-error", text: prompt.error }) : null,
         prompt.status === "complete" ? button("Reset from here", () => {
           if (confirm(`Reset ${prompt.label} and all later prompts?`)) command("RESET_FROM_PROMPT", { chainId: chain.id, promptId: prompt.id });
         }, "ghost") : null
-      ]));
+      );
+      list.append(details);
     });
     const addPromptText = el("input", { className: "aisq-input", placeholder: "New prompt text" });
     const addPrompt = () => { const result = command("ADD_PROMPT", { chainId: chain.id, text: addPromptText.value }); if (result.ok) addPromptText.value = ""; };
@@ -1247,9 +1257,12 @@
     runSelected.disabled = state.runner.enabled || !!state.runner.pendingPromptId;
     const skipCurrent = button("Skip current", skipPrompt, "ghost");
     skipCurrent.disabled = foreignPending || (state.runner.enabled && !leaseToken);
-    return el("div", { className: "aisq-section" }, [
+    const stickyHeader = el("div", { className: "aisq-sticky-header" }, [
       el("div", { className: "aisq-run-card" }, [el("span", { className: `aisq-phase aisq-phase-${state.runner.phase}`, text: phase }), el("strong", { text: current?.label || currentChain?.name || "No active prompt" }), el("span", { className: "aisq-copy", text: `${counts.complete}/${counts.prompts} complete` })]),
-      el("div", { className: "aisq-meter", text: `Stack: ${counts.chains} chain(s) · ${counts.queued} queued · ${counts.pending} pending · ${counts.error} errors` }),
+      el("div", { className: "aisq-meter", text: `Stack: ${counts.chains} chain(s) · ${counts.queued} queued · ${counts.pending} pending · ${counts.error} errors` })
+    ]);
+    return el("div", { className: "aisq-section" }, [
+      stickyHeader,
       el("div", { className: "aisq-host-grid" }, [el("span", { text: "Page" }), el("strong", { text: host.mode }), el("span", { text: "AI Studio" }), el("strong", { text: host.lastHeader || host.state }), el("span", { text: "Turns" }), el("strong", { text: `${host.turnCount} (baseline ${state.runner.baselineTurnCount || 0})` }), el("span", { text: "Retries" }), el("strong", { text: `${state.runner.retryCount || 0}/${state.settings.maxRetries}` })]),
       runnerOwnedByOtherTab || foreignPending ? el("div", { className: "aisq-error", text: "Another AI Studio tab owns the pending runner. Recover here only in the same bound app after the original tab closes or its lease expires." }) : null,
       state.runner.lastError ? el("div", { className: "aisq-error", text: state.runner.lastError }) : null,
@@ -1371,15 +1384,17 @@
       .aisq-chain-card { border:1px solid #ffffff16; border-radius:11px; background:#1d1c22; padding:8px; }
       .aisq-chain-card.selected { border-color:#8067ff; box-shadow:0 0 0 2px #7357ff24; }
       .aisq-chain-card.locked { border-color:#a88cff; }
-      .aisq-chain-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto auto auto auto; gap:5px; align-items:center; }
+      .aisq-chain-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto auto auto auto auto; gap:5px; align-items:center; }
       .aisq-chain-head .aisq-button:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; }
       .aisq-prompt-list { display:flex; flex-direction:column; gap:10px; }
       .aisq-prompt { border-left:3px solid #6b6874; border-radius:10px; background:#1d1c22; padding:10px; }
+      .aisq-prompt[open] .aisq-prompt-head { margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 8px; }
       .aisq-prompt.aisq-complete { border-left-color:#4ee09a; }
       .aisq-prompt.aisq-pending { border-left-color:#a88cff; }
       .aisq-prompt.aisq-error { border-left-color:#ff6d69; }
       .aisq-prompt.aisq-skipped { border-left-color:#89838f; opacity:.7; }
-      .aisq-prompt-head { display:grid; grid-template-columns:26px minmax(0,1fr) auto auto auto auto auto; gap:5px; align-items:center; margin-bottom:8px; }
+      .aisq-prompt-head { display:grid; grid-template-columns:26px minmax(0,1fr) auto auto auto auto auto; gap:5px; align-items:center; cursor:pointer; list-style:none; }
+      .aisq-prompt-head::-webkit-details-marker { display:none; }
       .aisq-prompt-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .aisq-index { display:grid; place-items:center; width:24px; height:24px; border-radius:7px; background:#302d39; }
       .aisq-status { color:#aaa6b7; font-size:11px; }
