@@ -1054,11 +1054,11 @@
   }
 
   function button(label, handler, kind = "", accessibleLabel = label) {
-    return el("button", { className: `aisq-button ${kind}`.trim(), type: "button", text: label, ariaLabel: accessibleLabel, on: { click: handler } });
+    return el("button", { className: `aisq-button ${kind}`.trim(), type: "button", text: label, title: accessibleLabel, ariaLabel: accessibleLabel, on: { click: handler } });
   }
 
   function field(label, control, help = "") {
-    const wrap = el("label", { className: "aisq-field" }, [el("span", { className: "aisq-label", text: label }), control]);
+    const wrap = el("label", { className: "aisq-field", title: label }, [el("span", { className: "aisq-label", text: label }), control]);
     if (help) wrap.append(el("span", { className: "aisq-help", text: help }));
     return wrap;
   }
