@@ -99,14 +99,23 @@
   }
 
   function setNativeValue(control, value) {
+    if (!control) return;
     const prototype = control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-    if (!setter) throw new Error("Unable to find native value setter");
-    control.focus();
-    setter.call(control, value);
+    if (!setter) {
+      control.value = value;
+    } else {
+      control.focus();
+      setter.call(control, value);
+    }
     const InputEventClass = globalThis.InputEvent || Event;
-    control.dispatchEvent(new InputEventClass("input", { bubbles: true, inputType: "insertText", data: value }));
-    control.dispatchEvent(new Event("change", { bubbles: true }));
+    try {
+      control.dispatchEvent(new InputEventClass("beforeinput", { bubbles: true, cancelable: true, composed: true, inputType: "insertText", data: value }));
+    } catch {}
+    control.dispatchEvent(new InputEventClass("input", { bubbles: true, composed: true, inputType: "insertText", data: value }));
+    control.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    control.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, composed: true, key: "End" }));
+    control.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, composed: true, key: "End" }));
   }
 
   let textStash = null;
@@ -574,7 +583,7 @@
     if (!prompt) return markPromptError("Pending prompt could not be found");
     const chain = state.chains.find((c) => c.id === state.runner.activeChainId);
     const fullText = getPromptFullText(chain, prompt);
-    if (!host.textarea || !host.submit) {
+    if (!host.textarea || (!host.submit && host.mode === "editor")) {
       if (Date.now() - Number(state.runner.submittedAt || 0) > state.settings.startTimeoutMs) markPromptError("AI Studio composer disappeared before submission");
       return;
     }
@@ -583,7 +592,12 @@
       state.runner.nextActionAt = Date.now() + 150;
       return;
     }
-    if (Date.now() < Number(state.runner.nextActionAt || 0) || !host.submitReady) return;
+    if (Date.now() < Number(state.runner.nextActionAt || 0)) return;
+    
+    // Give submitReady up to 500ms before proceeding
+    const elapsedSinceSubmit = Date.now() - Number(state.runner.submittedAt || 0);
+    if (!host.submitReady && elapsedSinceSubmit < 500) return;
+
     const intendedPromptId = prompt.id;
     state.runner.clickedAt = Date.now();
     state.runner.submittedAt = Date.now();
@@ -593,7 +607,24 @@
     touchState();
     const persisted = await saveNow();
     if (!persisted || state.runner.pendingPromptId !== intendedPromptId || !state.runner.enabled) return;
-    robustClick(host.submit);
+    
+    // Trigger submission via both robustClick on the submit button and Enter key on textarea
+    if (host.submit) robustClick(host.submit);
+    if (host.textarea) {
+      const enterKey = (type) => new KeyboardEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+        which: 13
+      });
+      host.textarea.dispatchEvent(enterKey("keydown"));
+      host.textarea.dispatchEvent(enterKey("keypress"));
+      host.textarea.dispatchEvent(enterKey("keyup"));
+    }
+    
     addHistory("submitted", `Submitted ${prompt.label}`, { chainId: state.runner.activeChainId, promptId: prompt.id, mode: host.mode });
     touchState();
     scheduleSave();
