@@ -176,12 +176,22 @@
 
   function currentPageKey() {
     const parts = location.pathname.split("/").filter(Boolean);
+    // /apps/<id>  → /apps/<id>
     if (parts[0] === "apps") return `/${parts.slice(0, 2).join("/")}`;
+    // /app/apps/<id>  → /app/apps/<id>
+    if (parts[0] === "app" && parts[1] === "apps") return `/${parts.slice(0, 3).join("/")}`;
     return location.pathname || "/";
   }
 
+  /** True if the bound key is a generic apps-list page and the current key is a specific app under it. */
+  function isAppsListUpgrade(boundKey, currentKey) {
+    return /\/apps$/.test(boundKey) && currentKey.startsWith(boundKey + "/");
+  }
+
   function pageMatchesBinding() {
-    return !state.runner.boundPageKey || state.runner.boundPageKey === currentPageKey();
+    if (!state.runner.boundPageKey) return true;
+    const current = currentPageKey();
+    return state.runner.boundPageKey === current || isAppsListUpgrade(state.runner.boundPageKey, current);
   }
 
   function addHistory(kind, message, data = null) {
@@ -730,7 +740,7 @@
       renderCountdowns();
       if (state.runner.pendingPromptId && leaseToken && state.runner.ownerTabId === tabId) {
         const currentKey = currentPageKey();
-        if (state.runner.boundPageKey === "/apps" && currentKey.startsWith("/apps/")) {
+        if (isAppsListUpgrade(state.runner.boundPageKey, currentKey)) {
           state.runner.boundPageKey = currentKey;
           touchState();
           scheduleSave();
@@ -833,7 +843,7 @@
   async function resumeRunner() {
     if (state.runner.pendingPromptId) {
       const currentKey = currentPageKey();
-      if (state.runner.boundPageKey === "/apps" && currentKey.startsWith("/apps/")) {
+      if (isAppsListUpgrade(state.runner.boundPageKey, currentKey)) {
         mutate(() => { state.runner.boundPageKey = currentKey; });
       }
     }
@@ -867,7 +877,7 @@
     if (!state.runner.pendingPromptId) return;
     const currentKey = currentPageKey();
     let recoveredPageKey = null;
-    if (state.runner.boundPageKey === "/apps" && currentKey.startsWith("/apps/")) {
+    if (isAppsListUpgrade(state.runner.boundPageKey, currentKey)) {
       if (!confirm("Recover the pending start-page submission in this app? Only continue if this is the app created by that submission.")) return;
       recoveredPageKey = currentKey;
     } else if (!pageMatchesBinding()) {
