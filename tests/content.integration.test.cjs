@@ -539,9 +539,11 @@ test("each paste creates one FIFO chain without resetting an active runner", asy
   const paste = (text) => {
     const draft = env.shadow().querySelector(".aisq-draft");
     assert.ok(draft, "Build intake remains mounted for uninterrupted pastes");
-    const event = new env.window.Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
-    draft.dispatchEvent(event);
+    draft.value = text;
+    draft.dispatchEvent(new env.window.Event("input", { bubbles: true, cancelable: true }));
+    const addButton = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Add chain");
+    assert.ok(addButton, "Add chain button exists");
+    addButton.click();
   };
   paste("A1 substantial prompt that should remain in chain A.\n\n---\n\nA2 substantial prompt that should remain in chain A.");
   await wait(80);
