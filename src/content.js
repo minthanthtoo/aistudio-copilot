@@ -1557,10 +1557,10 @@
       .aisq-prompt.aisq-skipped { border-left-color:#89838f; opacity:.7; }
       .aisq-prompt.aisq-highlight-running { border-left-color:#55e69b; background:rgba(85,230,155,0.05); }
       .aisq-prompt.aisq-highlight-paused { border-left-color:#f6c032; background:rgba(246,192,50,0.05); }
-      .aisq-prompt-head { display:grid; grid-template-columns:26px minmax(0,1fr) auto auto auto auto auto; gap:5px; align-items:center; cursor:pointer; list-style:none; }
+      .aisq-prompt-head { display:flex; gap:5px; align-items:center; cursor:pointer; list-style:none; }
       .aisq-prompt-head::-webkit-details-marker { display:none; }
-      .aisq-prompt-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .aisq-index { display:grid; place-items:center; width:24px; height:24px; border-radius:7px; background:#302d39; }
+      .aisq-prompt-head strong { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+      .aisq-index { flex:0 0 24px; display:grid; place-items:center; height:24px; border-radius:7px; background:#302d39; }
       .aisq-status { color:#aaa6b7; font-size:11px; }
       .aisq-error { padding:9px 10px; border:1px solid #ff6d6948; border-radius:9px; background:#5a25273d; color:#ffc0bd; }
       .aisq-global-error { margin:0 16px; }
