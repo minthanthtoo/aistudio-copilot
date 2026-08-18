@@ -695,7 +695,8 @@
         state.runner.retryCount = Number(state.runner.retryCount || 0) + 1;
         state.runner.nextActionAt = Date.now() + state.settings.retryDelayMs;
         state.runner.lastError = host.errorText || host.lastHeader || "AI Studio failed";
-        addHistory("retry_scheduled", `Retry ${state.runner.retryCount}/${state.settings.maxRetries} scheduled`, { promptId: prompt?.id || null });
+        const retryMaxLabel = Number(state.settings.maxRetries || 0) === 0 ? "∞" : state.settings.maxRetries;
+        addHistory("retry_scheduled", `Retry ${state.runner.retryCount}/${retryMaxLabel} scheduled`, { promptId: prompt?.id || null });
         break;
       case "retry_now":
         if (!host.retry || !visible(host.retry)) return markPromptError("Retry control disappeared");
@@ -707,7 +708,8 @@
         touchState();
         if (!await saveNow() || state.runner.pendingPromptId !== prompt?.id || !state.runner.enabled) break;
         robustClick(host.retry);
-        addHistory("retry_clicked", `Clicked Retry ${state.runner.retryCount}/${state.settings.maxRetries}`, { promptId: prompt?.id || null });
+        const retryMaxClickLabel = Number(state.settings.maxRetries || 0) === 0 ? "∞" : state.settings.maxRetries;
+        addHistory("retry_clicked", `Clicked Retry ${state.runner.retryCount}/${retryMaxClickLabel}`, { promptId: prompt?.id || null });
         break;
       case "pause_for_failure": {
         const policy = state.settings.failurePolicy || "pause";
@@ -1621,7 +1623,7 @@
     ]);
     return el("div", { className: "aisq-section" }, [
       stickyHeader,
-      el("div", { className: "aisq-host-grid" }, [el("span", { text: "Page" }), el("strong", { text: host.mode }), el("span", { text: "AI Studio" }), el("strong", { text: host.lastHeader || host.state }), el("span", { text: "Turns" }), el("strong", { text: `${host.turnCount} (baseline ${state.runner.baselineTurnCount || 0})` }), el("span", { text: "Retries" }), el("strong", { text: `${state.runner.retryCount || 0}/${state.settings.maxRetries}` })]),
+      el("div", { className: "aisq-host-grid" }, [el("span", { text: "Page" }), el("strong", { text: host.mode }), el("span", { text: "AI Studio" }), el("strong", { text: host.lastHeader || host.state }), el("span", { text: "Turns" }), el("strong", { text: `${host.turnCount} (baseline ${state.runner.baselineTurnCount || 0})` }), el("span", { text: "Retries" }), el("strong", { text: `${state.runner.retryCount || 0}/${Number(state.settings.maxRetries || 0) === 0 ? "∞" : state.settings.maxRetries}` })]),
       runnerOwnedByOtherTab || foreignPending ? el("div", { className: "aisq-error", text: "Another AI Studio tab owns the pending runner. Recover here only in the same bound app after the original tab closes or its lease expires." }) : null,
       state.runner.lastError ? el("div", { className: "aisq-error", text: state.runner.lastError }) : null,
       exportStep ? el("div", { className: "aisq-meter", text: exportStep }) : null,
@@ -1668,7 +1670,7 @@
       checkboxSetting("stopAfterChain", "Pause after the current chain", "Useful for reviewing output before the next paste chain."),
       field("New-paste placement", placement),
       field("Failure policy", failure),
-      numberSetting("maxRetries", "Maximum retries"),
+      numberSetting("maxRetries", "Maximum retries (0 = unlimited)", 1, 0),
       numberSetting("retryDelayMs", "Retry delay (seconds)", 1000),
       numberSetting("settleMs", "Completion settle window (seconds)", 1000, 0.5),
       numberSetting("interPromptDelayMs", "Delay between prompts (seconds)", 1000),

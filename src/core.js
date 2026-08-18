@@ -181,7 +181,7 @@
     return {
       autoRun: true,
       autoRetry: true,
-      maxRetries: 2,
+      maxRetries: 0,
       retryDelayMs: 5000,
       settleMs: 2500,
       interPromptDelayMs: 3000,
@@ -830,7 +830,9 @@
       return { action: "none", host };
     }
     if (newTurn && host.failed) {
-      if (settings.autoRetry && Number(runner.retryCount || 0) < Number(settings.maxRetries || 0)) return { action: "schedule_retry", phase: PHASES.RETRY_WAIT, host };
+      const maxRetries = Number(settings.maxRetries || 0);
+      const isUnlimited = maxRetries === 0;
+      if (settings.autoRetry && (isUnlimited || Number(runner.retryCount || 0) < maxRetries)) return { action: "schedule_retry", phase: PHASES.RETRY_WAIT, host };
       return { action: "pause_for_failure", phase: PHASES.PAUSED, message: host.errorText || "AI Studio run failed", host };
     }
     if (newTurn && host.success) {
