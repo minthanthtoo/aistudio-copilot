@@ -1113,7 +1113,7 @@
       }
     });
     const strategy = el("select", { className: "aisq-select", value: state.ui.splitStrategy });
-    for (const [value, label] of [["auto", "Auto detect"], ["stage", "Stage headings"], ["id", "P001 / R001 IDs"], ["prompt", "Prompt headings"], ["delimiter", "Delimiters"], ["numbered", "Numbered blocks"], ["single", "Single prompt"]]) {
+    for (const [value, label] of [["auto", "Auto detect"], ["stage", "Stage / Phase headings"], ["id", "P001 / R001 IDs"], ["prompt", "Prompt headings"], ["delimiter", "Delimiters"], ["numbered", "Numbered blocks"], ["single", "Single prompt"]]) {
       const option = el("option", { value, text: label });
       if (value === state.ui.splitStrategy) option.selected = true;
       strategy.append(option);

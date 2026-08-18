@@ -86,7 +86,7 @@
 
   function labelForPrompt(text, index) {
     const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
-    const structured = lines.find((line) => /^(?:#{1,6}\s*)?(?:Stage\s+\d+|(?:\[)?(?:P|R)\d{3}(?:\])?|Prompt\s+\d+)\b/i.test(line));
+    const structured = lines.find((line) => /^(?:#{1,6}\s*)?(?:(?:Stage|Phase|Step|Round|Part)\s+\d+|(?:\[)?(?:P|R)\d{3}(?:\])?|Prompt\s+\d+)\b/i.test(line));
     const first = structured || lines[0] || `Prompt ${index + 1}`;
     const cleaned = first.replace(/^#{1,6}\s*/, "").replace(/^[-*]\s+/, "");
     return cleaned.length > 72 ? `${cleaned.slice(0, 69)}…` : cleaned;
@@ -110,7 +110,7 @@
     if (!text) return { strategy: "empty", prompts: [] };
 
     const strategies = {
-      stage: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?Stage\s+\d+\b/i),
+      stage: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?(?:Stage|Phase|Step|Round|Part)\s+\d+\b/i),
       id: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?(?:\[)?(?:P|R)\d{3}(?:\])?\b/i),
       prompt: () => splitAtHeaders(text, /^\s*(?:#{1,6}\s*)?Prompt\s+\d+\b/i),
       delimiter: () => splitAtDelimiters(text),
