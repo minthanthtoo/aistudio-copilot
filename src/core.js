@@ -494,6 +494,10 @@
     } else if (type === "REMOVE_CHAIN_FROM_STACK") {
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id) || (state.runner.enabled && chain.id === state.runner.activeChainId)) return reject("The active chain is locked");
+      if (chain.id === state.runner.activeChainId) {
+        const index = state.stackOrder.indexOf(chain.id);
+        state.runner.activeChainId = state.stackOrder[index + 1] || null;
+      }
       state.stackOrder = state.stackOrder.filter((id) => id !== chain.id);
     } else if (type === "ADD_CHAIN_TO_STACK") {
       if (!chain) return reject("Chain not found");
@@ -517,6 +521,10 @@
     } else if (type === "DELETE_CHAIN") {
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id) || (state.runner.enabled && chain.id === state.runner.activeChainId)) return reject("Pause before deleting the active chain");
+      if (chain.id === state.runner.activeChainId) {
+        const index = state.stackOrder.indexOf(chain.id);
+        state.runner.activeChainId = state.stackOrder[index + 1] || null;
+      }
       state.chains = state.chains.filter((item) => item.id !== chain.id);
       state.stackOrder = state.stackOrder.filter((id) => id !== chain.id);
       if (state.selectedChainId === chain.id) state.selectedChainId = state.stackOrder[0] || state.chains[0]?.id || null;
@@ -559,6 +567,36 @@
       const prompt = chain.prompts[index];
       if (promptIsLocked(state, prompt.id) || ["complete", "skipped"].includes(prompt.status)) return reject("This prompt is locked; reset it before deleting");
       chain.prompts.splice(index, 1);
+      chain.updatedAt = nowISO();
+    } else if (type === "REORDER_TO_NEXT") {
+      const prompt = chain?.prompts.find((item) => item.id === payload.promptId);
+      if (!chain || !prompt) return reject("Target not found");
+      if (prompt.status !== "queued" && prompt.status !== "error") return reject("Can only reorder pending prompts");
+      let insertIndex = 0;
+      for (let i = 0; i < chain.prompts.length; i++) {
+        if (chain.prompts[i].status === "queued" || chain.prompts[i].status === "error") {
+          insertIndex = i;
+          break;
+        }
+      }
+      const currentIndex = chain.prompts.indexOf(prompt);
+      if (currentIndex === insertIndex) return;
+      chain.prompts.splice(currentIndex, 1);
+      const safeIndex = currentIndex < insertIndex ? insertIndex - 1 : insertIndex;
+      chain.prompts.splice(safeIndex, 0, prompt);
+      chain.updatedAt = nowISO();
+    } else if (type === "JUMP_TO_PROMPT") {
+      const prompt = chain?.prompts.find((item) => item.id === payload.promptId);
+      if (!chain || !prompt) return reject("Target not found");
+      if (state.runner.enabled && state.runner.activeChainId !== chain.id) return reject("Pause runner to jump across chains");
+      const currentIndex = chain.prompts.indexOf(prompt);
+      for (let i = 0; i < currentIndex; i++) {
+        const p = chain.prompts[i];
+        if (p.status === "queued" || p.status === "error") p.status = "skipped";
+      }
+      if (prompt.status === "skipped") prompt.status = "queued";
+      state.runner.activeChainId = chain.id;
+      state.runner.pendingPromptId = prompt.id;
       chain.updatedAt = nowISO();
     } else if (type === "ADD_PROMPT") {
       if (!chain) return reject("Chain not found");

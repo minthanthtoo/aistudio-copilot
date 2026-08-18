@@ -1250,6 +1250,10 @@
         togglePreface.title = "Toggle whether the preface is prepended to this prompt before submission";
         controls.unshift(togglePreface);
       }
+      
+      const runNext = button("Run Next", () => command("REORDER_TO_NEXT", { chainId: chain.id, promptId: prompt.id }), "ghost");
+      runNext.title = "Move this prompt to be the immediate next target in the queue";
+      controls.unshift(runNext);
 
       controls.forEach((control) => { 
         control.disabled = locked || prompt.status === "skipped";
@@ -1262,6 +1266,34 @@
       const details = el("details", { className: `aisq-prompt aisq-${prompt.status}${highlightClass}` });
       if (isRunning || prompt.status === "error") details.open = true;
       const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), ...controls]);
+      
+      summary.addEventListener("dblclick", (e) => {
+        if (locked) return;
+        e.preventDefault();
+        const doJump = () => command("JUMP_TO_PROMPT", { chainId: chain.id, promptId: prompt.id });
+        if (state.settings.skipJumpWarning) {
+          doJump();
+        } else {
+          const dialog = el("dialog", { className: "aisq-dialog" });
+          const title = el("h3", { text: "Jump to Prompt" });
+          const msg = el("p", { text: "You are jumping to a different prompt. This will mark earlier pending prompts as skipped. Continue?" });
+          const label = el("label", { className: "aisq-checkbox-label" });
+          const checkbox = el("input", { type: "checkbox" });
+          label.append(checkbox, document.createTextNode(" Do not show again"));
+          
+          const cancel = button("Cancel", () => dialog.remove(), "ghost");
+          const confirmBtn = button("Continue", () => {
+            if (checkbox.checked) command("UPDATE_SETTINGS", { skipJumpWarning: true });
+            dialog.remove();
+            doJump();
+          }, "primary");
+          
+          const actions = el("div", { className: "aisq-actions" }, [cancel, confirmBtn]);
+          dialog.append(title, msg, label, actions);
+          shadow.append(dialog);
+          dialog.showModal();
+        }
+      });
       
       details.append(
         summary,
@@ -1464,6 +1496,11 @@
       .aisq-check input { margin-top:3px; }
       .aisq-check small { grid-column:2; color:#9995a5; }
       .aisq-shortcuts { display:flex; flex-direction:column; gap:5px; padding:11px; border-radius:10px; background:#1d1c22; }
+      .aisq-dialog { background:#15151a; color:#f5f4fa; border:1px solid #ffffff26; border-radius:12px; padding:20px; box-shadow:0 24px 80px #000b; max-width:400px; }
+      .aisq-dialog h3 { margin:0 0 10px; font-size:16px; }
+      .aisq-dialog p { margin:0 0 16px; color:#cfcbd9; line-height:1.4; }
+      .aisq-dialog::backdrop { background:rgba(0,0,0,0.6); backdrop-filter:blur(2px); }
+      .aisq-checkbox-label { display:flex; align-items:center; gap:8px; cursor:pointer; color:#cfcbd9; margin-bottom:16px; }
       .aisq-footer { position:sticky; bottom:0; padding:8px 16px; border-top:1px solid #ffffff12; background:#15151af2; color:#85818f; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .aisq-scroll-actions { position:fixed; right:30px; bottom:120px; display:flex; flex-direction:column; gap:8px; z-index:2147483647; }
       .aisq-float-btn { width:32px; height:32px; border-radius:50%; border:1px solid #ffffff20; background:rgba(21,21,26,0.9); color:#cfcbd9; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.5); backdrop-filter:blur(4px); font-size:12px; display:grid; place-items:center; transition:background 0.2s, border-color 0.2s; }
