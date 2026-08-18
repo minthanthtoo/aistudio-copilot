@@ -1149,7 +1149,10 @@
     const locked = isActive && state.runner.enabled;
     const card = el("div", { className: `aisq-chain-card ${locked ? "locked" : ""} ${selected ? "selected" : ""}${highlightClass}` });
     const head = el("div", { className: "aisq-chain-head" }, [
-      button(`${index + 1}. ${chain.name}`, () => command("SELECT_CHAIN", { chainId: chain.id }), selected ? "primary" : "ghost"),
+      button(`${index + 1}. ${chain.name}`, () => {
+        command("SELECT_CHAIN", { chainId: chain.id });
+        mutate(() => { state.settings.activeTab = "prompts"; });
+      }, selected ? "primary" : "ghost"),
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
       button("⤒", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Move ${chain.name} to top`),
       button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} up`),
@@ -1162,8 +1165,7 @@
     return card;
   }
 
-  function renderPrompts() {
-    const chain = selectedChain();
+  function renderStack() {
     const wrap = el("div", { className: "aisq-section" });
     const stack = el("div", { className: "aisq-stack-list" });
     if (!state.chains.length) {
@@ -1180,7 +1182,20 @@
       stored.forEach((candidate, index) => stack.append(chainCard(candidate, state.stackOrder.length + index)));
     }
     wrap.append(el("div", { className: "aisq-stack-title" }, [el("strong", { text: "Execution stack" }), el("span", { className: "aisq-copy", text: `${state.stackOrder.length} chain(s)` })]), stack);
-    if (!chain) return wrap;
+    return wrap;
+  }
+
+  function renderPrompts() {
+    const chain = selectedChain();
+    const wrap = el("div", { className: "aisq-section" });
+    if (!state.chains.length) {
+      wrap.append(el("p", { className: "aisq-copy", text: "No chains yet. Paste a prompt pack in Build." }));
+      return wrap;
+    }
+    if (!chain) {
+      wrap.append(el("p", { className: "aisq-copy", text: "Select a chain from the Stack tab to inspect it." }));
+      return wrap;
+    }
 
     const select = el("select", { className: "aisq-select" });
     state.chains.forEach((candidate) => {
@@ -1336,8 +1351,8 @@
     if (panel.hidden) return;
     const header = el("header", { className: "aisq-header" }, [el("div", {}, [el("strong", { text: "Queue Pilot" }), el("div", { className: "aisq-subtitle", text: "Google AI Studio Apps · stacked chains" })]), button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Queue Pilot")]);
     const tabs = el("nav", { className: "aisq-tabs", role: "tablist", ariaLabel: "Queue Pilot sections" });
-    for (const tab of ["build", "prompts", "run", "settings"]) tabs.append(el("button", { className: `aisq-tab ${state.settings.activeTab === tab ? "active" : ""}`, type: "button", text: tab, role: "tab", ariaSelected: state.settings.activeTab === tab, on: { click: () => mutate(() => { state.settings.activeTab = tab; }) } }));
-    const body = state.settings.activeTab === "build" ? renderBuild() : state.settings.activeTab === "prompts" ? renderPrompts() : state.settings.activeTab === "run" ? renderRun() : renderSettings();
+    for (const tab of ["build", "stack", "prompts", "run", "settings"]) tabs.append(el("button", { className: `aisq-tab ${state.settings.activeTab === tab ? "active" : ""}`, type: "button", text: tab, role: "tab", ariaSelected: state.settings.activeTab === tab, on: { click: () => mutate(() => { state.settings.activeTab = tab; }) } }));
+    const body = state.settings.activeTab === "build" ? renderBuild() : state.settings.activeTab === "stack" ? renderStack() : state.settings.activeTab === "prompts" ? renderPrompts() : state.settings.activeTab === "run" ? renderRun() : renderSettings();
     const alert = state.runner.lastError && state.settings.activeTab !== "run" ? el("div", { className: "aisq-error aisq-global-error", text: state.runner.lastError, role: "alert" }) : null;
     const scrollActions = el("div", { className: "aisq-scroll-actions" }, [
       el("button", { className: "aisq-float-btn", text: "▲", title: "Scroll to top", type: "button", on: { click: () => panel.scrollTo({ top: 0, behavior: "smooth" }) } }),
@@ -1363,7 +1378,7 @@
       .aisq-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; padding:15px 16px 11px; background:#15151af2; backdrop-filter:blur(12px); }
       .aisq-subtitle,.aisq-help,.aisq-copy { color:#a9a6b4; }
       .aisq-subtitle { font-size:11px; }
-      .aisq-tabs { position:sticky; top:61px; z-index:2; display:grid; grid-template-columns:repeat(4,1fr); padding:0 10px 10px; gap:4px; background:#15151af2; }
+      .aisq-tabs { position:sticky; top:61px; z-index:2; display:grid; grid-template-columns:repeat(5,1fr); padding:0 10px 10px; gap:4px; background:#15151af2; }
       .aisq-tab { border:0; border-radius:9px; padding:7px 4px; background:transparent; color:#aaa6b7; text-transform:capitalize; cursor:pointer; }
       .aisq-tab.active { background:#6d4aff; color:white; }
       .aisq-section { display:flex; flex-direction:column; gap:12px; padding:14px 16px 18px; }
