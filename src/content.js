@@ -1161,13 +1161,24 @@
     
     const runNext = button("Run Next", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Move ${chain.name} to be the immediate next target`);
     
+    const upBtn = button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} up`);
+    const downBtn = button("↓", () => command("MOVE_CHAIN", { chainId: chain.id, direction: 1 }), "ghost", `Move ${chain.name} down`);
+    const bottomBtn = button("⤓", () => command("MOVE_CHAIN_TO_BOTTOM", { chainId: chain.id }), "ghost", `Move ${chain.name} to bottom`);
+    
+    if (isActive) {
+      runNext.disabled = true;
+      upBtn.disabled = true;
+      downBtn.disabled = true;
+      bottomBtn.disabled = true;
+    }
+    
     const head = el("div", { className: "aisq-chain-head" }, [
       nameBtn,
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
       runNext,
-      button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} up`),
-      button("↓", () => command("MOVE_CHAIN", { chainId: chain.id, direction: 1 }), "ghost", `Move ${chain.name} down`),
-      button("⤓", () => command("MOVE_CHAIN_TO_BOTTOM", { chainId: chain.id }), "ghost", `Move ${chain.name} to bottom`),
+      upBtn,
+      downBtn,
+      bottomBtn,
       button(state.stackOrder.includes(chain.id) ? "–" : "+", () => command(state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", state.stackOrder.includes(chain.id) ? `Suspend ${chain.name}` : `Add ${chain.name} to stack`),
       button("✕", () => command("DELETE_CHAIN", { chainId: chain.id }), "danger ghost", `Delete ${chain.name}`)
     ]);

@@ -506,7 +506,7 @@
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id) || (state.runner.enabled && chain.id === state.runner.activeChainId)) return reject("The running chain is locked");
       state.stackOrder = state.stackOrder.filter((id) => id !== chain.id);
-      const activeIndex = state.runner.enabled ? state.stackOrder.indexOf(state.runner.activeChainId) : -1;
+      const activeIndex = state.runner.activeChainId ? state.stackOrder.indexOf(state.runner.activeChainId) : -1;
       state.stackOrder.splice(activeIndex + 1, 0, chain.id);
       if (!state.runner.enabled) {
         state.runner.activeChainId = chain.id;
