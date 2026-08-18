@@ -1139,11 +1139,14 @@
   }
 
   function chainCard(chain, index) {
-    const selected = chain.id === state.selectedChainId;
-    const locked = state.runner.activeChainId === chain.id && state.runner.enabled;
     const counts = Core.chainCounts(chain);
-    const status = Core.chainStatus(state, chain);
-    const card = el("div", { className: `aisq-chain-card ${selected ? "selected" : ""} ${locked ? "locked" : ""}` });
+    let status = counts.pending ? "running" : counts.queued === 0 ? "done" : "queued";
+    const selected = state.selectedChainId === chain.id;
+    const isActive = state.runner.activeChainId === chain.id;
+    const isPaused = isActive && !state.runner.enabled;
+    let highlightClass = "";
+    if (isActive) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
+    const card = el("div", { className: `aisq-chain-card ${chainIsLocked(state, chain.id) ? "locked" : ""} ${selected ? "selected" : ""}${highlightClass}` });
     const head = el("div", { className: "aisq-chain-head" }, [
       button(`${index + 1}. ${chain.name}`, () => command("SELECT_CHAIN", { chainId: chain.id }), selected ? "primary" : "ghost"),
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
@@ -1207,7 +1210,10 @@
         control.addEventListener("click", (e) => e.stopPropagation());
       });
       const isRunning = state.runner.pendingPromptId === prompt.id;
-      const details = el("details", { className: `aisq-prompt aisq-${prompt.status}` });
+      const isPaused = isRunning && !state.runner.enabled;
+      let highlightClass = "";
+      if (isRunning) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
+      const details = el("details", { className: `aisq-prompt aisq-${prompt.status}${highlightClass}` });
       if (isRunning || prompt.status === "error") details.open = true;
       const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), up, down, merge, remove]);
       
@@ -1378,18 +1384,22 @@
       .aisq-meter { padding:9px 10px; border-radius:9px; background:#24222b; color:#cfcbd9; }
       .aisq-stack-title { display:flex; justify-content:space-between; align-items:center; }
       .aisq-stack-list { display:flex; flex-direction:column; gap:7px; }
-      .aisq-chain-card { border:1px solid #ffffff16; border-radius:11px; background:#1d1c22; padding:8px; }
+      .aisq-chain-card { border:1px solid #ffffff16; border-radius:11px; background:#1d1c22; padding:8px; transition:border-color 0.2s, box-shadow 0.2s; }
       .aisq-chain-card.selected { border-color:#8067ff; box-shadow:0 0 0 2px #7357ff24; }
       .aisq-chain-card.locked { border-color:#a88cff; }
+      .aisq-chain-card.aisq-highlight-running { border-color:#55e69b; box-shadow:0 0 0 2px rgba(85,230,155,0.2); }
+      .aisq-chain-card.aisq-highlight-paused { border-color:#f6c032; box-shadow:0 0 0 2px rgba(246,192,50,0.2); }
       .aisq-chain-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto auto auto auto auto; gap:5px; align-items:center; }
       .aisq-chain-head .aisq-button:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; }
       .aisq-prompt-list { display:flex; flex-direction:column; gap:10px; }
-      .aisq-prompt { border-left:3px solid #6b6874; border-radius:10px; background:#1d1c22; padding:10px; }
+      .aisq-prompt { border-left:3px solid #6b6874; border-radius:10px; background:#1d1c22; padding:10px; transition:background 0.2s, border-color 0.2s; }
       .aisq-prompt[open] .aisq-prompt-head { margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 8px; }
       .aisq-prompt.aisq-complete { border-left-color:#4ee09a; }
       .aisq-prompt.aisq-pending { border-left-color:#a88cff; }
       .aisq-prompt.aisq-error { border-left-color:#ff6d69; }
       .aisq-prompt.aisq-skipped { border-left-color:#89838f; opacity:.7; }
+      .aisq-prompt.aisq-highlight-running { border-left-color:#55e69b; background:rgba(85,230,155,0.05); }
+      .aisq-prompt.aisq-highlight-paused { border-left-color:#f6c032; background:rgba(246,192,50,0.05); }
       .aisq-prompt-head { display:grid; grid-template-columns:26px minmax(0,1fr) auto auto auto auto auto; gap:5px; align-items:center; cursor:pointer; list-style:none; }
       .aisq-prompt-head::-webkit-details-marker { display:none; }
       .aisq-prompt-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
