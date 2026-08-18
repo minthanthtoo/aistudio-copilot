@@ -47,8 +47,32 @@
     return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) !== 0 && rect.width > 0 && rect.height > 0;
   }
 
+  function deepQueryAll(selector, root = document) {
+    const results = [];
+    const seen = new Set();
+    function crawl(node) {
+      if (!node || seen.has(node)) return;
+      seen.add(node);
+      if (node.querySelectorAll) {
+        try {
+          const matches = node.querySelectorAll(selector);
+          for (let i = 0; i < matches.length; i++) results.push(matches[i]);
+        } catch {}
+      }
+      const children = node.children || [];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child.id === ROOT_ID || (rootHost && child === rootHost)) continue;
+        if (child.shadowRoot) crawl(child.shadowRoot);
+        crawl(child);
+      }
+    }
+    crawl(root);
+    return results;
+  }
+
   function visibleAll(selector, scope = document) {
-    return Array.from(scope.querySelectorAll(selector)).filter(visible);
+    return deepQueryAll(selector, scope).filter(visible);
   }
 
   function exactButton(label, scope = document) {
@@ -138,11 +162,11 @@
 
   function scanHost() {
     // ── Textarea ─────────────────────────────────────────────────────────────
-    // Primary selector uses stable CSS class (.cdk-textarea-autosize) not fragile
-    // placeholder text, with the original placeholder as fallback.
+    // Primary selector uses stable CSS class (.cdk-textarea-autosize), fallback to placeholder
     const editorTextarea =
       visibleAll('ms-code-assistant-chat textarea.cdk-textarea-autosize')[0] ||
       visibleAll('ms-code-assistant-chat textarea[placeholder="Make changes, add new features, ask for anything"]')[0] ||
+      visibleAll('textarea.cdk-textarea-autosize')[0] ||
       null;
     const startTextarea = visibleAll('textarea[placeholder="Describe an app and let Gemini do the rest"]')[0] || null;
     const mode = editorTextarea ? "editor" : startTextarea ? "start" : "unsupported";
@@ -154,17 +178,23 @@
     // a stop-square icon. There is no separate stop button in the DOM.
     const sendBtn = mode === "editor"
       ? visibleAll('ms-code-assistant-chat button.send-button')[0] ||
-        visibleAll('ms-code-assistant-chat button[aria-label="Send"]')[0] || null
+        visibleAll('ms-code-assistant-chat button[aria-label="Send"]')[0] ||
+        visibleAll('button.send-button')[0] || null
       : null;
 
+    // Thinking indicator text (e.g. "Tinkering", "Tweaking", "Sculpting")
+    const thinkingNode = visibleAll("ms-thinking-indicator, .thinking-text")[0] || null;
+    const thinkingText = thinkingNode ? textOf(thinkingNode) : "";
+
     // "running" class on the send button is the most reliable busy signal.
-    // ms-thinking-indicator is a secondary check (visible during generation).
+    // ms-thinking-indicator and ms-gradient-spinner are secondary checks.
     const isRunning = !!(sendBtn?.classList.contains("running") ||
-      visibleAll("ms-thinking-indicator")[0]);
+      thinkingNode ||
+      visibleAll("ms-gradient-spinner")[0]);
 
     // When running: submit = null (can't submit again), stop = the running button.
     // When idle:    submit = the send button, stop = null.
-    const stop = isRunning ? sendBtn : null;
+    const stop = isRunning ? (sendBtn || visibleAll('button.send-button.running, button[aria-label*="Stop"]')[0] || null) : null;
     const submit = mode === "editor"
       ? (isRunning ? null : sendBtn)
       : mode === "start" ? visibleAll("button.build-button")[0] || exactButton("Build") : null;
@@ -198,6 +228,7 @@
       turnCount: turns.length,
       lastHeader,
       errorText,
+      thinkingText,
       retryVisible: !!retry,
       retry,
       busy,
@@ -1556,6 +1587,19 @@
     ]);
   }
 
+  function stopActiveAI() {
+    const host = scanHost();
+    if (host.stop) {
+      robustClick(host.stop);
+      addHistory("ai_stopped", "User stopped AI Studio generation");
+    }
+    if (state.runner.enabled) {
+      pauseRunner();
+    } else {
+      requestRender();
+    }
+  }
+
   function renderTopRunControls() {
     const isPromptsTab = state.settings.activeTab === "prompts";
     const startLabel = state.runner.phase === PHASES.PAUSED ? "▶️ Resume" : "▶️ Start";
@@ -1568,6 +1612,12 @@
         : leaseToken ? button("⏸️ Pause", pauseRunner) : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
     if (state.runner.enabled && !leaseToken && !foreignPending) primaryControl.disabled = true;
 
+    const host = scanHost();
+    const isHostBusy = host.busy || !!host.stop;
+    const stopAiControl = (state.runner.enabled || state.runner.phase === PHASES.PAUSED) && isHostBusy && host.stop
+      ? button("⏹️ Stop AI", stopActiveAI, "danger ghost", "Stop current AI Studio generation immediately")
+      : null;
+
     const runSelected = button("⏏️ Run Selected", () => void startRunner("selected"), "ghost");
     runSelected.disabled = !isPromptsTab || state.runner.enabled || !!state.runner.pendingPromptId;
 
@@ -1576,13 +1626,18 @@
 
     const currentChain = runnerChain();
     const current = runnerPrompt();
-    const phaseText = state.runner.phase.replaceAll("_", " ");
+    let phaseText = state.runner.phase.replaceAll("_", " ");
+    if (isHostBusy && host.thinkingText) {
+      phaseText = `${phaseText} · ${host.thinkingText}`;
+    }
     const targetText = current?.label || currentChain?.name || "No active prompt";
 
+    const controls = [primaryControl];
+    if (stopAiControl) controls.push(stopAiControl);
+    controls.push(runSelected, skipCurrent);
+
     return el("div", { className: "aisq-top-run-controls" }, [
-      primaryControl,
-      runSelected,
-      skipCurrent,
+      ...controls,
       el("div", { className: "aisq-top-status" }, [
         el("span", { className: `aisq-phase aisq-phase-${state.runner.phase}`, text: phaseText }),
         el("strong", { text: targetText })
@@ -1719,8 +1774,9 @@
       .aisq-global-error { margin:0 16px; }
       .aisq-run-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:9px; }
       .aisq-phase { border-radius:999px; padding:4px 8px; background:#34313d; color:#d6d1e2; font-size:11px; text-transform:capitalize; }
-      .aisq-phase-running,.aisq-phase-awaiting_start,.aisq-phase-submitting { background:#452f91; color:#e1d8ff; }
+      .aisq-phase-running,.aisq-phase-awaiting_start,.aisq-phase-submitting { background:#452f91; color:#e1d8ff; animation:aisq-pulse 1.8s infinite ease-in-out; }
       .aisq-phase-done { background:#174a35; color:#a4f5ce; }
+      @keyframes aisq-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
       .aisq-host-grid { display:grid; grid-template-columns:auto 1fr; gap:5px 12px; padding:11px; border-radius:10px; background:#1d1c22; }
       .aisq-host-grid span { color:#9995a5; }
       .aisq-host-grid strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
