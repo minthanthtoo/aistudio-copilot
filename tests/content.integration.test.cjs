@@ -718,7 +718,7 @@ test("sequential queue edits synchronize across open AI Studio tabs", async (t) 
 
   second.window.__aisq.show();
   await wait(80);
-  Array.from(second.shadow().querySelectorAll(".aisq-tab")).find((node) => node.textContent === "prompts").click();
+  Array.from(second.shadow().querySelectorAll(".aisq-tab")).find((node) => node.textContent.startsWith("prompts")).click();
   await wait(80);
   const name = second.shadow().querySelector('.aisq-field input.aisq-input');
   assert.ok(name);

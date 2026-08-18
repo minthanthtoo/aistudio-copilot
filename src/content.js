@@ -1159,6 +1159,10 @@
     }, selected ? "primary" : "ghost");
     nameBtn.title = titlePreview;
     
+    let currentIndex = chain.prompts.findIndex(p => ["pending", "queued", "error"].includes(p.status));
+    if (currentIndex === -1) currentIndex = chain.prompts.length;
+    const displayIndex = currentIndex < counts.total ? currentIndex + 1 : counts.total;
+    
     const runNext = button("Run Next", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Move ${chain.name} to be the immediate next target`);
     
     const upBtn = button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} up`);
@@ -1174,7 +1178,7 @@
     
     const head = el("div", { className: "aisq-chain-head" }, [
       nameBtn,
-      el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
+      el("span", { className: "aisq-status", text: `${status} · ${counts.total > 0 ? displayIndex : 0}/${counts.total}` }),
       runNext,
       upBtn,
       downBtn,
@@ -1488,8 +1492,18 @@
     if (statusLine) statusLine.textContent = `${state.runner.phase.replaceAll("_", " ")} · ${state.runner.lastHostState || "ready"}`;
     if (panel.hidden) return;
     const header = el("header", { className: "aisq-header" }, [el("div", {}, [el("strong", { text: "Queue Pilot" }), el("div", { className: "aisq-subtitle", text: "Google AI Studio Apps · stacked chains" })]), button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Queue Pilot")]);
+    
+    let promptBadge = "";
+    const selectedChain = Core.getSelectedChain(state);
+    if (selectedChain && selectedChain.prompts.length > 0) {
+      let currentIndex = selectedChain.prompts.findIndex(p => ["pending", "queued", "error"].includes(p.status));
+      if (currentIndex === -1) currentIndex = selectedChain.prompts.length;
+      const displayIndex = currentIndex < selectedChain.prompts.length ? currentIndex + 1 : selectedChain.prompts.length;
+      promptBadge = ` (${displayIndex}/${selectedChain.prompts.length})`;
+    }
+
     const tabs = el("nav", { className: "aisq-tabs", role: "tablist", ariaLabel: "Queue Pilot sections" });
-    for (const tab of ["build", "stack", "prompts", "run", "settings"]) tabs.append(el("button", { className: `aisq-tab ${state.settings.activeTab === tab ? "active" : ""}`, type: "button", text: tab, role: "tab", ariaSelected: state.settings.activeTab === tab, on: { click: () => mutate(() => { state.settings.activeTab = tab; }) } }));
+    for (const tab of ["build", "stack", "prompts", "run", "settings"]) tabs.append(el("button", { className: `aisq-tab ${state.settings.activeTab === tab ? "active" : ""}`, type: "button", text: tab === "prompts" ? `prompts${promptBadge}` : tab, role: "tab", ariaSelected: state.settings.activeTab === tab, on: { click: () => mutate(() => { state.settings.activeTab = tab; }) } }));
     const body = state.settings.activeTab === "build" ? renderBuild() : state.settings.activeTab === "stack" ? renderStack() : state.settings.activeTab === "prompts" ? renderPrompts() : state.settings.activeTab === "run" ? renderRun() : renderSettings();
     const alert = state.runner.lastError && state.settings.activeTab !== "run" ? el("div", { className: "aisq-error aisq-global-error", text: state.runner.lastError, role: "alert" }) : null;
     const scrollActions = el("div", { className: "aisq-scroll-actions" }, [
