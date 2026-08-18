@@ -1369,18 +1369,7 @@
     const currentChain = runnerChain();
     const current = runnerPrompt();
     const phase = state.runner.phase.replaceAll("_", " ");
-    const startLabel = state.runner.phase === PHASES.PAUSED ? "Resume" : "Start";
-    const runSelected = button("Run selected", () => void startRunner("selected"), "ghost");
     const foreignPending = !!(state.runner.pendingPromptId && state.runner.ownerTabId && state.runner.ownerTabId !== tabId && !leaseToken);
-    const primaryControl = foreignPending
-      ? button("Recover here", () => void recoverPendingHere(), "primary", "Explicitly recover the pending runner in this AI Studio app")
-      : !state.runner.enabled
-        ? button(startLabel, () => { void (state.runner.phase === PHASES.PAUSED ? resumeRunner() : startRunner("stack")); }, "primary")
-        : leaseToken ? button("Pause", pauseRunner) : button("Owned elsewhere", () => {}, "ghost", "Runner is owned by another AI Studio tab");
-    if (state.runner.enabled && !leaseToken && !foreignPending) primaryControl.disabled = true;
-    runSelected.disabled = state.runner.enabled || !!state.runner.pendingPromptId;
-    const skipCurrent = button("Skip current", skipPrompt, "ghost");
-    skipCurrent.disabled = foreignPending || (state.runner.enabled && !leaseToken);
     const stickyHeader = el("div", { className: "aisq-sticky-header" }, [
       el("div", { className: "aisq-run-card" }, [el("span", { className: `aisq-phase aisq-phase-${state.runner.phase}`, text: phase }), el("strong", { text: current?.label || currentChain?.name || "No active prompt" }), el("span", { className: "aisq-copy", text: `${counts.complete}/${counts.prompts} complete` })]),
       el("div", { className: "aisq-meter", text: `Stack: ${counts.chains} chain(s) · ${counts.queued} queued · ${counts.pending} pending · ${counts.error} errors` })
@@ -1392,9 +1381,6 @@
       state.runner.lastError ? el("div", { className: "aisq-error", text: state.runner.lastError }) : null,
       exportStep ? el("div", { className: "aisq-meter", text: exportStep }) : null,
       el("div", { className: "aisq-actions" }, [
-        primaryControl,
-        runSelected,
-        skipCurrent,
         button("Download ZIP", () => void downloadZip(), "ghost"),
         button("Diagnostics", downloadDiagnostics, "ghost", "Download redacted Queue Pilot diagnostics")
       ]),
@@ -1460,6 +1446,40 @@
     ]);
   }
 
+  function renderTopRunControls() {
+    const isPromptsTab = state.settings.activeTab === "prompts";
+    const startLabel = state.runner.phase === PHASES.PAUSED ? "Resume" : "Start";
+    const foreignPending = !!(state.runner.pendingPromptId && state.runner.ownerTabId && state.runner.ownerTabId !== tabId && !leaseToken);
+    
+    const primaryControl = foreignPending
+      ? button("Recover here", () => void recoverPendingHere(), "primary", "Explicitly recover the pending runner in this AI Studio app")
+      : !state.runner.enabled
+        ? button(startLabel, () => { void (state.runner.phase === PHASES.PAUSED ? resumeRunner() : startRunner("stack")); }, "primary")
+        : leaseToken ? button("Pause", pauseRunner) : button("Owned elsewhere", () => {}, "ghost", "Runner is owned by another AI Studio tab");
+    if (state.runner.enabled && !leaseToken && !foreignPending) primaryControl.disabled = true;
+
+    const runSelected = button("Run selected", () => void startRunner("selected"), "ghost");
+    runSelected.disabled = !isPromptsTab || state.runner.enabled || !!state.runner.pendingPromptId;
+
+    const skipCurrent = button("Skip current", skipPrompt, "ghost");
+    skipCurrent.disabled = !isPromptsTab || foreignPending || (state.runner.enabled && !leaseToken);
+
+    const currentChain = runnerChain();
+    const current = runnerPrompt();
+    const phaseText = state.runner.phase.replaceAll("_", " ");
+    const targetText = current?.label || currentChain?.name || "No active prompt";
+
+    return el("div", { className: "aisq-top-run-controls" }, [
+      primaryControl,
+      runSelected,
+      skipCurrent,
+      el("div", { className: "aisq-top-status" }, [
+        el("span", { className: `aisq-phase aisq-phase-${state.runner.phase}`, text: phaseText }),
+        el("strong", { text: targetText })
+      ])
+    ]);
+  }
+
   function render() {
     if (!panel) return;
     panel.hidden = !state.settings.panelOpen;
@@ -1476,7 +1496,8 @@
       el("button", { className: "aisq-float-btn", text: "▲", title: "Scroll to top", type: "button", on: { click: () => panel.scrollTo({ top: 0, behavior: "smooth" }) } }),
       el("button", { className: "aisq-float-btn", text: "▼", title: "Scroll to bottom", type: "button", on: { click: () => panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" }) } })
     ]);
-    panel.replaceChildren(header, tabs, alert, body, scrollActions, el("footer", { className: "aisq-footer" }, [el("span", { text: `v${EXTENSION_VERSION} · ` }), statusLine]));
+    const topRunControls = renderTopRunControls();
+    panel.replaceChildren(header, tabs, topRunControls, alert, body, scrollActions, el("footer", { className: "aisq-footer" }, [el("span", { text: `v${EXTENSION_VERSION} · ` }), statusLine]));
   }
 
   function installStyles() {
@@ -1499,6 +1520,8 @@
       .aisq-tabs { position:sticky; top:61px; z-index:2; display:grid; grid-template-columns:repeat(5,1fr); padding:0 10px 10px; gap:4px; background:#15151af2; }
       .aisq-tab { border:0; border-radius:9px; padding:7px 4px; background:transparent; color:#aaa6b7; text-transform:capitalize; cursor:pointer; }
       .aisq-tab.active { background:#6d4aff; color:white; }
+      .aisq-top-run-controls { position:sticky; top:99px; z-index:2; display:flex; gap:8px; padding:10px 16px; background:#1e1d24f2; backdrop-filter:blur(12px); border-bottom:1px solid #ffffff12; align-items:center; flex-wrap:wrap; }
+      .aisq-top-status { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; }
       .aisq-section { display:flex; flex-direction:column; gap:12px; padding:14px 16px 18px; }
       .aisq-field { display:flex; flex-direction:column; gap:5px; }
       .aisq-label { font-weight:650; }
