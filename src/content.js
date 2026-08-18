@@ -593,7 +593,7 @@
     touchState();
     const persisted = await saveNow();
     if (!persisted || state.runner.pendingPromptId !== intendedPromptId || !state.runner.enabled) return;
-    host.submit.click();
+    robustClick(host.submit);
     addHistory("submitted", `Submitted ${prompt.label}`, { chainId: state.runner.activeChainId, promptId: prompt.id, mode: host.mode });
     touchState();
     scheduleSave();

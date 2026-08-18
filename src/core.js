@@ -817,24 +817,30 @@
     if (phase === PHASES.PACING) {
       return now >= Number(runner.nextActionAt || 0) ? { action: "pacing_complete", phase: PHASES.READY, host } : { action: "none", host };
     }
+    if ([PHASES.AWAITING, PHASES.RUNNING, PHASES.SETTLING, PHASES.RETRY_WAIT].includes(phase) && elapsed > Number(settings.completionTimeoutMs)) {
+      return { action: "timeout", message: phase === PHASES.RETRY_WAIT ? "Retry did not restart" : "AI Studio prompt exceeded the completion timeout", host };
+    }
     if (phase === PHASES.RETRY_WAIT) {
-      if (newTurn && host.busy) return { action: "mark_running", phase: PHASES.RUNNING, host };
+      if ((newTurn || runner.sawBusy) && host.busy) return { action: "mark_running", phase: PHASES.RUNNING, host };
       if (now >= Number(runner.nextActionAt || 0) && host.retryVisible) return { action: "retry_now", host };
-      if (elapsed > Number(settings.completionTimeoutMs)) return { action: "timeout", message: "Retry did not restart", host };
       return { action: "none", host };
     }
-    if (newTurn && host.failed) {
+    if ((newTurn || runner.sawBusy) && host.failed) {
       if (settings.autoRetry && Number(runner.retryCount || 0) < Number(settings.maxRetries || 0) && host.retryVisible) return { action: "schedule_retry", phase: PHASES.RETRY_WAIT, host };
       return { action: "pause_for_failure", phase: PHASES.PAUSED, message: host.errorText || "AI Studio run failed", host };
     }
-    if (newTurn && host.busy && !runner.sawBusy) return { action: "mark_running", phase: PHASES.RUNNING, host };
-    if (newTurn && host.success) {
+    if (host.busy) {
+      if (phase !== PHASES.RUNNING) return { action: "mark_running", phase: PHASES.RUNNING, host };
+      return { action: "none", host };
+    }
+    if ((newTurn || runner.sawBusy) && host.success) {
       if (phase !== PHASES.SETTLING) return { action: "begin_settle", phase: PHASES.SETTLING, host };
       if (now >= Number(runner.settleUntil || 0)) return { action: "complete_prompt", host };
     }
     if (phase === PHASES.SETTLING && host.busy) return { action: "mark_running", phase: PHASES.RUNNING, host };
-    if ([PHASES.AWAITING, PHASES.SUBMITTING].includes(phase) && elapsed > Number(settings.startTimeoutMs)) return { action: "timeout", message: "AI Studio did not start the submitted prompt", host };
-    if ([PHASES.AWAITING, PHASES.RUNNING, PHASES.SETTLING].includes(phase) && elapsed > Number(settings.completionTimeoutMs)) return { action: "timeout", message: "AI Studio prompt exceeded the completion timeout", host };
+    if ([PHASES.AWAITING, PHASES.SUBMITTING].includes(phase) && !host.busy && elapsed > Number(settings.startTimeoutMs)) {
+      return { action: "timeout", message: "AI Studio did not start the submitted prompt", host };
+    }
     return { action: "none", host };
   }
 
