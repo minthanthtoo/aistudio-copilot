@@ -1389,13 +1389,20 @@
 
     const prefaceBadge = el("span", { 
       className: `aisq-preface-badge ${hasPreface ? "" : "empty"}`, 
-      text: hasPreface ? `${activePrefaceCount}/${chain.prompts.length} active` : "empty" 
+      text: hasPreface ? `${activePrefaceCount}/${chain.prompts.length} active · ${chain.preface.length}c` : "empty" 
     });
+
+    const clearPreface = hasPreface
+      ? button("Clear", () => {
+          if (confirm("Clear preface text for this chain?")) command("EDIT_PREFACE", { chainId: chain.id, text: "" });
+        }, "danger ghost")
+      : null;
 
     const prefaceSummary = el("summary", { className: "aisq-prompt-head aisq-preface-head" }, [
       el("strong", { text: "Preface (Intro)" }),
       prefaceBadge,
-      includeAllToggle
+      includeAllToggle,
+      ...(clearPreface ? [clearPreface] : [])
     ]);
     const prefaceDetails = el("details", { className: "aisq-prompt aisq-preface-card" }, [prefaceSummary, prefaceEditor]);
     if (hasPreface) prefaceDetails.open = true;
@@ -1606,16 +1613,16 @@
     const foreignPending = !!(state.runner.pendingPromptId && state.runner.ownerTabId && state.runner.ownerTabId !== tabId && !leaseToken);
     
     const primaryControl = foreignPending
-      ? button("🔁 Recover", () => void recoverPendingHere(), "primary", "Explicitly recover the pending runner in this AI Studio app")
+      ? button("🔁 Recover", () => void recoverPendingHere(), "primary aisq-btn-highlight", "Explicitly recover the pending runner in this AI Studio app")
       : !state.runner.enabled
-        ? button(startLabel, () => { void (state.runner.phase === PHASES.PAUSED ? resumeRunner() : startRunner("stack")); }, "primary")
-        : leaseToken ? button("⏸️ Pause", pauseRunner) : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
+        ? button(startLabel, () => { void (state.runner.phase === PHASES.PAUSED ? resumeRunner() : startRunner("stack")); }, "primary aisq-btn-highlight")
+        : leaseToken ? button("⏸️ Pause", pauseRunner, "aisq-btn-pause") : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
     if (state.runner.enabled && !leaseToken && !foreignPending) primaryControl.disabled = true;
 
     const host = scanHost();
     const isHostBusy = host.busy || !!host.stop;
     const stopAiControl = (state.runner.enabled || state.runner.phase === PHASES.PAUSED) && isHostBusy && host.stop
-      ? button("⏹️ Stop AI", stopActiveAI, "danger ghost", "Stop current AI Studio generation immediately")
+      ? button("⏹️ Stop AI", stopActiveAI, "danger ghost aisq-btn-stop", "Stop current AI Studio generation immediately")
       : null;
 
     const runSelected = button("⏏️ Run Selected", () => void startRunner("selected"), "ghost");
@@ -1632,6 +1639,26 @@
     }
     const targetText = current?.label || currentChain?.name || "No active prompt";
 
+    // Mode status pill
+    let modePillClass = "aisq-host-badge";
+    let modeText = "Searching...";
+    if (host.mode === "editor") {
+      if (isHostBusy) {
+        modePillClass += " aisq-host-busy";
+        modeText = host.thinkingText || "AI Generating";
+      } else {
+        modePillClass += " aisq-host-editor";
+        modeText = "Editor Ready";
+      }
+    } else if (host.mode === "start") {
+      modePillClass += " aisq-host-start";
+      modeText = "Start Page";
+    } else {
+      modePillClass += " aisq-host-unsupported";
+      modeText = "Not in Apps";
+    }
+    const hostPill = el("span", { className: modePillClass, text: modeText });
+
     const controls = [primaryControl];
     if (stopAiControl) controls.push(stopAiControl);
     controls.push(runSelected, skipCurrent);
@@ -1639,6 +1666,7 @@
     return el("div", { className: "aisq-top-run-controls" }, [
       ...controls,
       el("div", { className: "aisq-top-status" }, [
+        hostPill,
         el("span", { className: `aisq-phase aisq-phase-${state.runner.phase}`, text: phaseText }),
         el("strong", { text: targetText })
       ])
@@ -1708,8 +1736,24 @@
       .aisq-tabs { position:sticky; top:61px; z-index:2; display:grid; grid-template-columns:repeat(5,1fr); padding:0 10px 10px; gap:4px; background:#15151af2; }
       .aisq-tab { border:0; border-radius:9px; padding:7px 4px; background:transparent; color:#aaa6b7; text-transform:capitalize; cursor:pointer; }
       .aisq-tab.active { background:#6d4aff; color:white; }
-      .aisq-top-run-controls { position:sticky; top:99px; z-index:2; display:flex; gap:8px; padding:10px 16px; background:#1e1d24f2; backdrop-filter:blur(12px); border-bottom:1px solid #ffffff12; align-items:center; flex-wrap:wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-radius: 0 0 18px 18px; }
-      .aisq-top-status { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; color: #b9a9ff; font-weight: 500; }
+      .aisq-top-run-controls { position:sticky; top:99px; z-index:2; display:flex; gap:8px; padding:10px 16px; background:#1e1d24f2; backdrop-filter:blur(12px); border-bottom:1px solid #ffffff12; align-items:center; flex-wrap:wrap; box-shadow:0 4px 14px rgba(0,0,0,0.35); border-radius:0 0 16px 16px; }
+      .aisq-top-status { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; color:#b9a9ff; font-weight:500; }
+      .aisq-btn-highlight { background:linear-gradient(135deg,#7357ff,#5835eb) !important; border-color:#8e76ff !important; color:#fff !important; box-shadow:0 2px 8px rgba(115,87,255,0.35); font-weight:600; }
+      .aisq-btn-highlight:hover { background:linear-gradient(135deg,#856bff,#6844f5) !important; }
+      .aisq-btn-pause { background:rgba(246,192,50,0.12) !important; border-color:rgba(246,192,50,0.4) !important; color:#fde047 !important; font-weight:600; }
+      .aisq-btn-pause:hover { background:rgba(246,192,50,0.22) !important; }
+      .aisq-btn-stop { background:rgba(255,109,105,0.12) !important; border-color:rgba(255,109,105,0.45) !important; color:#fca5a5 !important; font-weight:600; }
+      .aisq-btn-stop:hover { background:rgba(255,109,105,0.25) !important; }
+      .aisq-host-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:600; letter-spacing:0.2px; }
+      .aisq-host-badge::before { content:""; width:6px; height:6px; border-radius:50%; display:inline-block; }
+      .aisq-host-editor { background:rgba(85,230,155,0.1); color:#55e69b; border:1px solid rgba(85,230,155,0.25); }
+      .aisq-host-editor::before { background:#55e69b; box-shadow:0 0 6px #55e69b; }
+      .aisq-host-start { background:rgba(246,192,50,0.1); color:#fde047; border:1px solid rgba(246,192,50,0.25); }
+      .aisq-host-start::before { background:#fde047; }
+      .aisq-host-unsupported { background:rgba(255,255,255,0.05); color:#9995a5; border:1px solid rgba(255,255,255,0.1); }
+      .aisq-host-unsupported::before { background:#9995a5; }
+      .aisq-host-busy { background:rgba(185,169,255,0.15); color:#d8ceff; border:1px solid rgba(185,169,255,0.35); animation:aisq-pulse 1.5s infinite ease-in-out; }
+      .aisq-host-busy::before { background:#b9a9ff; box-shadow:0 0 8px #b9a9ff; }
       #aisq-panel.aisq-minimized { width: auto; max-width: 480px; min-width: 320px; bottom: 80px; }
       #aisq-panel.aisq-minimized .aisq-tabs,
       #aisq-panel.aisq-minimized .aisq-global-error,
