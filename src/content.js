@@ -1226,6 +1226,7 @@
     const node = document.createElement(tag);
     if (options.className) node.className = options.className;
     if (options.text !== undefined) node.textContent = String(options.text);
+    if (options.html !== undefined) node.innerHTML = String(options.html);
     if (options.title) node.title = options.title;
     if (options.type) node.type = options.type;
     if (options.value !== undefined) node.value = String(options.value);
@@ -1997,7 +1998,8 @@
     document.documentElement.append(rootHost);
     shadow = rootHost.attachShadow({ mode: "open" });
     installStyles();
-    const bubble = el("button", { type: "button", text: "AISQ", title: "Toggle AI Studio Copilot", ariaLabel: "Toggle AI Studio Copilot", on: { click: () => mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; }) } });
+    const bubbleHtml = `<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block;margin:auto;"><path d="M12 2C12 7.5 16.5 12 22 12C16.5 12 12 16.5 12 22C12 16.5 7.5 12 2 12C7.5 12 12 7.5 12 2Z"/></svg>`;
+    const bubble = el("button", { type: "button", html: bubbleHtml, title: "Toggle AI Studio Copilot", ariaLabel: "Toggle AI Studio Copilot", on: { click: () => mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; }) } });
     bubble.id = "aisq-bubble";
     const dlBubble = el("button", { type: "button", text: "⬇︎", title: "Download app (Alt+D)", ariaLabel: "Download app", on: { click: () => void downloadZip() } });
     dlBubble.id = "aisq-dl-bubble";

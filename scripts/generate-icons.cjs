@@ -51,11 +51,12 @@ function render(size) {
         const t = Math.max(0, Math.min(1, (px + py - 30) / 190));
         color = [Math.round(139 + (75 - 139) * t), Math.round(115 + (42 - 115) * t), Math.round(255 + (203 - 255) * t), 255];
       }
-      const lines = [[36, 39, 92, 39], [36, 64, 78, 64], [36, 89, 66, 89]];
-      if (lines.some(([x1, y1, x2, y2]) => capsuleDistance(px, py, x1, y1, x2, y2) <= 6)) color = [255, 255, 255, 255];
-      const dotDistance = Math.hypot(px - 96, py - 89);
-      if (dotDistance <= 14.5) color = [23, 60, 44, 255];
-      if (dotDistance <= 9.5) color = [85, 230, 155, 255];
+      
+      // Draw 4-pointed Copilot Sparkle (Astroid-like curve)
+      const dx = Math.abs(px - 64);
+      const dy = Math.abs(py - 64);
+      const isSpark = Math.pow(dx, 0.6) + Math.pow(dy, 0.6) <= Math.pow(42, 0.6);
+      if (isSpark) color = [255, 255, 255, 255];
       const offset = (y * size + x) * 4;
       pixels[offset] = color[0];
       pixels[offset + 1] = color[1];
@@ -85,4 +86,4 @@ function render(size) {
 
 fs.mkdirSync(outputDir, { recursive: true });
 for (const size of [16, 32, 48, 128]) fs.writeFileSync(path.join(outputDir, `icon${size}.png`), render(size));
-console.log("Generated Queue Pilot icons: 16, 32, 48, 128");
+console.log("Generated AI Studio Copilot icons: 16, 32, 48, 128");
