@@ -1422,6 +1422,8 @@
       .aisq-scroll-actions { position:fixed; right:30px; bottom:120px; display:flex; flex-direction:column; gap:8px; z-index:2147483647; }
       .aisq-float-btn { width:32px; height:32px; border-radius:50%; border:1px solid #ffffff20; background:rgba(21,21,26,0.9); color:#cfcbd9; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.5); backdrop-filter:blur(4px); font-size:12px; display:grid; place-items:center; transition:background 0.2s, border-color 0.2s; }
       .aisq-float-btn:hover { background:rgba(45,42,58,0.9); border-color:#7357ff; }
+      .aisq-global-tooltip { position:fixed; z-index:2147483647; background:rgba(20,20,25,0.95); color:#fff; padding:6px 10px; border-radius:6px; font-size:11px; pointer-events:none; opacity:0; transition:opacity 0.15s; white-space:nowrap; border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); transform:translate(-50%, -100%); margin-top:-8px; }
+      .aisq-global-tooltip.visible { opacity:1; }
     `;
     shadow.append(style);
   }
@@ -1448,7 +1450,32 @@
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-label", "AI Studio Queue Pilot");
     statusLine = el("span", { text: "ready" });
-    shadow.append(bubble, dlBubble, panel);
+    const tooltipEl = el("div", { className: "aisq-global-tooltip" });
+    shadow.append(bubble, dlBubble, panel, tooltipEl);
+
+    shadow.addEventListener("mouseover", (e) => {
+      const target = e.target.closest("[title]");
+      if (!target) return;
+      const text = target.getAttribute("title");
+      if (!text) return;
+      target.setAttribute("data-title", text);
+      target.removeAttribute("title");
+      tooltipEl.textContent = text;
+      const rect = target.getBoundingClientRect();
+      tooltipEl.style.left = `${rect.left + rect.width / 2}px`;
+      tooltipEl.style.top = `${rect.top}px`;
+      tooltipEl.classList.add("visible");
+    }, true);
+
+    shadow.addEventListener("mouseout", (e) => {
+      const target = e.target.closest("[data-title]");
+      if (target) {
+        target.setAttribute("title", target.getAttribute("data-title"));
+        target.removeAttribute("data-title");
+      }
+      tooltipEl.classList.remove("visible");
+    }, true);
+
     render();
   }
 
