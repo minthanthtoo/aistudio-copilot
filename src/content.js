@@ -373,11 +373,26 @@
     return result;
   }
 
-  function requestRender() {
+  let lastRenderedStateKey = "";
+  function stateRenderKey() {
+    return `${state.revision}_${state.settings.panelOpen}_${state.settings.isMinimized}_${state.settings.activeTab}_${state.runner.phase}_${state.runner.enabled}_${state.runner.pendingPromptId}_${state.runner.lastError}_${state.selectedChainId}_${exportStep}_${runnerOwnedByOtherTab}`;
+  }
+
+  function requestRender(force = false) {
     if (renderQueued) return;
     renderQueued = true;
     requestAnimationFrame(() => {
       renderQueued = false;
+      const key = stateRenderKey();
+      if (!force && key === lastRenderedStateKey) {
+        if (statusLine) statusLine.textContent = `${state.runner.phase.replaceAll("_", " ")} · ${state.runner.lastHostState || "ready"}`;
+        const bubble = shadow?.getElementById("aisq-bubble");
+        if (bubble) bubble.classList.toggle("running", state.runner.enabled);
+        const topStatus = shadow?.querySelector(".aisq-top-status");
+        if (topStatus) topStatus.textContent = `${state.runner.phase.replaceAll("_", " ")} · ${state.runner.lastHostState || "ready"}`;
+        return;
+      }
+      lastRenderedStateKey = key;
       const active = shadow?.activeElement;
       if (!active || !active.matches?.("input, textarea, select")) render();
     });
@@ -470,8 +485,6 @@
     }
     lastLeaseHeartbeatAt = Date.now();
     state.runner.leaseUpdatedAt = Core.nowISO();
-    touchState();
-    scheduleSave();
     return true;
   }
 
@@ -872,6 +885,12 @@
         if (state.runner.pendingPromptId && state.runner.ownerTabId && state.runner.ownerTabId !== tabId) {
           runnerOwnedByOtherTab = true;
           state.runner.lastHostState = "Pending work remains owned by another AI Studio tab";
+          requestRender();
+          return;
+        }
+        if (state.runner.ownerTabId && state.runner.ownerTabId !== tabId && !leaseExpired()) {
+          runnerOwnedByOtherTab = true;
+          state.runner.lastHostState = "Runner is owned by another AI Studio tab";
           requestRender();
           return;
         }
