@@ -477,6 +477,10 @@
       if (!chain) return reject("Chain not found");
       chain.name = normalizeText(payload.name) || "Prompt chain";
       chain.updatedAt = nowISO();
+    } else if (type === "EDIT_PREFACE") {
+      if (!chain) return reject("Chain not found");
+      chain.preface = normalizeText(payload.text);
+      chain.updatedAt = nowISO();
     } else if (type === "TOGGLE_ALL_PREFACES") {
       if (!chain) return reject("Chain not found");
       const include = payload.include !== false;

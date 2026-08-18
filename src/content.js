@@ -1266,21 +1266,20 @@
     wrap.append(el("div", { className: "aisq-meter", text: `${counts.complete}/${counts.total} complete · ${counts.queued} queued · ${counts.error} errors · ${counts.skipped} skipped` }));
 
     const list = el("div", { className: "aisq-prompt-list" });
-    if (chain.preface) {
-      const prefaceEditor = el("textarea", { className: "aisq-prompt-editor aisq-preface-editor", value: chain.preface, disabled: true });
-      const includeAllToggle = button(
-        chain.prompts.every(p => p.includePreface !== false) ? "Exclude from all" : "Include in all", 
-        () => command("TOGGLE_ALL_PREFACES", { chainId: chain.id, include: !chain.prompts.every(p => p.includePreface !== false) }),
-        "ghost"
-      );
-      const prefaceSummary = el("summary", { className: "aisq-prompt-head" }, [
-        el("strong", { text: "Preface (Intro)" }),
-        includeAllToggle
-      ]);
-      const prefaceDetails = el("details", { className: "aisq-prompt aisq-preface-card" }, [prefaceSummary, prefaceEditor]);
-      prefaceDetails.open = true;
-      list.append(prefaceDetails);
-    }
+    const prefaceEditor = el("textarea", { className: "aisq-prompt-editor aisq-preface-editor", value: chain.preface || "" });
+    prefaceEditor.addEventListener("change", () => command("EDIT_PREFACE", { chainId: chain.id, text: prefaceEditor.value }));
+    const includeAllToggle = button(
+      chain.prompts.every(p => p.includePreface !== false) ? "Exclude from all" : "Include in all", 
+      () => command("TOGGLE_ALL_PREFACES", { chainId: chain.id, include: !chain.prompts.every(p => p.includePreface !== false) }),
+      "ghost"
+    );
+    const prefaceSummary = el("summary", { className: "aisq-prompt-head" }, [
+      el("strong", { text: "Preface (Intro)" }),
+      includeAllToggle
+    ]);
+    const prefaceDetails = el("details", { className: "aisq-prompt aisq-preface-card" }, [prefaceSummary, prefaceEditor]);
+    if (chain.preface) prefaceDetails.open = true;
+    list.append(prefaceDetails);
 
     chain.prompts.forEach((prompt, index) => {
       const locked = prompt.status === "pending" || prompt.status === "complete" || state.runner.pendingPromptId === prompt.id;
@@ -1292,15 +1291,13 @@
       const remove = button("Delete", () => command("DELETE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "danger ghost");
       
       const controls = [up, down, merge, remove];
-      if (chain.preface) {
-        const togglePreface = button(
-          prompt.includePreface !== false ? "Intro On" : "Intro Off", 
-          () => command("TOGGLE_PROMPT_PREFACE", { chainId: chain.id, promptId: prompt.id, include: prompt.includePreface === false }),
-          prompt.includePreface !== false ? "ghost aisq-preface-on" : "ghost aisq-preface-off"
-        );
-        togglePreface.title = "Toggle whether the preface is prepended to this prompt before submission";
-        controls.unshift(togglePreface);
-      }
+      const togglePreface = button(
+        prompt.includePreface !== false ? "Intro On" : "Intro Off", 
+        () => command("TOGGLE_PROMPT_PREFACE", { chainId: chain.id, promptId: prompt.id, include: prompt.includePreface === false }),
+        prompt.includePreface !== false ? "ghost aisq-preface-on" : "ghost aisq-preface-off"
+      );
+      togglePreface.title = "Toggle whether the preface is prepended to this prompt before submission";
+      controls.unshift(togglePreface);
       
       const runNext = button("Run Next", () => command("REORDER_TO_NEXT", { chainId: chain.id, promptId: prompt.id }), "ghost");
       runNext.title = "Move this prompt to be the immediate next target in the queue";
