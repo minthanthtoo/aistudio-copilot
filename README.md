@@ -4,6 +4,10 @@ A prompt engineering assistant and queue automation copilot for [Google AI Studi
 
 AI Studio Copilot helps you manage, stack, and automate complex prompt chains. Whether you're pasting a massive 15-step app specification or queuing up multiple tweaks, Copilot runs them sequentially, handles retries gracefully, and survives page reloads—leaving you free to step away while your app builds itself.
 
+![AI Studio Copilot Full Editor Interface](assets/screenshot-editor.png)
+<br/>
+![AI Studio Copilot Minimized Media Player Mode](assets/screenshot-minimized.png)
+
 ---
 
 ## ✨ Features
