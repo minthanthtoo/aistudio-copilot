@@ -679,7 +679,6 @@
         break;
       }
       case "schedule_retry":
-        stashText();
         state.runner.phase = PHASES.RETRY_WAIT;
         state.runner.retryCount = Number(state.runner.retryCount || 0) + 1;
         state.runner.nextActionAt = Date.now() + state.settings.retryDelayMs;
@@ -695,8 +694,7 @@
         if (prompt) prompt.attempts = Number(prompt.attempts || 0) + 1;
         touchState();
         if (!await saveNow() || state.runner.pendingPromptId !== prompt?.id || !state.runner.enabled) break;
-        host.retry.click();
-        setTimeout(restoreText, 2600);
+        robustClick(host.retry);
         addHistory("retry_clicked", `Clicked Retry ${state.runner.retryCount}/${state.settings.maxRetries}`, { promptId: prompt?.id || null });
         break;
       case "pause_for_failure": {
@@ -924,7 +922,9 @@
       state.runner.scope = scope;
       state.runner.scopeChainId = scope === "selected" ? state.selectedChainId : null;
       state.runner.enabled = true;
-      state.runner.phase = state.runner.pendingPromptId ? PHASES.AWAITING : PHASES.READY;
+      state.runner.phase = state.runner.pendingPromptId ? PHASES.READY : PHASES.READY;
+      state.runner.sawBusy = false;
+      state.runner.submittedAt = null;
       state.runner.lastError = null;
       state.runner.ownerTabId = tabId;
       state.runner.leaseUpdatedAt = Core.nowISO();
