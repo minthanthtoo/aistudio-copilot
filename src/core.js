@@ -472,6 +472,17 @@
     } else if (type === "ADD_CHAIN_TO_STACK") {
       if (!chain) return reject("Chain not found");
       if (!state.stackOrder.includes(chain.id)) state.stackOrder.push(chain.id);
+    } else if (type === "JUMP_TO_CHAIN") {
+      if (!chain) return reject("Chain not found");
+      if (chainIsLocked(state, chain.id) || (state.runner.enabled && chain.id === state.runner.activeChainId)) return reject("The running chain is locked");
+      state.stackOrder = state.stackOrder.filter((id) => id !== chain.id);
+      const activeIndex = state.runner.enabled ? state.stackOrder.indexOf(state.runner.activeChainId) : -1;
+      state.stackOrder.splice(activeIndex + 1, 0, chain.id);
+      if (!state.runner.enabled) {
+        state.runner.activeChainId = chain.id;
+        state.runner.pendingPromptId = null;
+      }
+      state.selectedChainId = chain.id;
     } else if (type === "DELETE_CHAIN") {
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id) || (state.runner.enabled && chain.id === state.runner.activeChainId)) return reject("Pause before deleting the active chain");

@@ -1154,9 +1154,11 @@
     const head = el("div", { className: "aisq-chain-head" }, [
       button(`${index + 1}. ${chain.name}`, () => command("SELECT_CHAIN", { chainId: chain.id }), selected ? "primary" : "ghost"),
       el("span", { className: "aisq-status", text: `${status} · ${counts.complete}/${counts.total}` }),
+      button("⚡", () => command("JUMP_TO_CHAIN", { chainId: chain.id }), "ghost", `Run ${chain.name} next`),
       button("↑", () => command("MOVE_CHAIN", { chainId: chain.id, direction: -1 }), "ghost", `Move ${chain.name} earlier`),
       button("↓", () => command("MOVE_CHAIN", { chainId: chain.id, direction: 1 }), "ghost", `Move ${chain.name} later`),
-      button(state.stackOrder.includes(chain.id) ? "–" : "+", () => command(state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", state.stackOrder.includes(chain.id) ? `Remove ${chain.name} from stack` : `Add ${chain.name} to stack`)
+      button(state.stackOrder.includes(chain.id) ? "–" : "+", () => command(state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", state.stackOrder.includes(chain.id) ? `Remove ${chain.name} from stack` : `Add ${chain.name} to stack`),
+      button("✕", () => command("DELETE_CHAIN", { chainId: chain.id }), "danger ghost", `Delete ${chain.name}`)
     ]);
     card.append(head);
     return card;
@@ -1369,7 +1371,7 @@
       .aisq-chain-card { border:1px solid #ffffff16; border-radius:11px; background:#1d1c22; padding:8px; }
       .aisq-chain-card.selected { border-color:#8067ff; box-shadow:0 0 0 2px #7357ff24; }
       .aisq-chain-card.locked { border-color:#a88cff; }
-      .aisq-chain-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto auto; gap:5px; align-items:center; }
+      .aisq-chain-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto auto auto auto; gap:5px; align-items:center; }
       .aisq-chain-head .aisq-button:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; }
       .aisq-prompt-list { display:flex; flex-direction:column; gap:10px; }
       .aisq-prompt { border-left:3px solid #6b6874; border-radius:10px; background:#1d1c22; padding:10px; }
