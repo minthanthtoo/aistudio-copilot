@@ -825,15 +825,15 @@
       if (now >= Number(runner.nextActionAt || 0) && host.retryVisible) return { action: "retry_now", host };
       return { action: "none", host };
     }
-    if ((newTurn || runner.sawBusy) && host.failed) {
-      if (settings.autoRetry && Number(runner.retryCount || 0) < Number(settings.maxRetries || 0) && host.retryVisible) return { action: "schedule_retry", phase: PHASES.RETRY_WAIT, host };
-      return { action: "pause_for_failure", phase: PHASES.PAUSED, message: host.errorText || "AI Studio run failed", host };
-    }
     if (host.busy) {
       if (phase !== PHASES.RUNNING) return { action: "mark_running", phase: PHASES.RUNNING, host };
       return { action: "none", host };
     }
-    if ((newTurn || runner.sawBusy) && host.success) {
+    if (newTurn && host.failed) {
+      if (settings.autoRetry && Number(runner.retryCount || 0) < Number(settings.maxRetries || 0)) return { action: "schedule_retry", phase: PHASES.RETRY_WAIT, host };
+      return { action: "pause_for_failure", phase: PHASES.PAUSED, message: host.errorText || "AI Studio run failed", host };
+    }
+    if (newTurn && host.success) {
       if (phase !== PHASES.SETTLING) return { action: "begin_settle", phase: PHASES.SETTLING, host };
       if (now >= Number(runner.settleUntil || 0)) return { action: "complete_prompt", host };
     }

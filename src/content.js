@@ -621,9 +621,9 @@
     const persisted = await saveNow();
     if (!persisted || state.runner.pendingPromptId !== intendedPromptId || !state.runner.enabled) return;
     
-    // Trigger submission via both robustClick on the submit button and Enter key on textarea
-    if (host.submit) robustClick(host.submit);
-    if (host.textarea) {
+    if (host.submit) {
+      host.submit.click();
+    } else if (host.textarea) {
       const enterKey = (type) => new KeyboardEvent(type, {
         bubbles: true,
         cancelable: true,
@@ -634,7 +634,6 @@
         which: 13
       });
       host.textarea.dispatchEvent(enterKey("keydown"));
-      host.textarea.dispatchEvent(enterKey("keypress"));
       host.textarea.dispatchEvent(enterKey("keyup"));
     }
     
