@@ -1400,7 +1400,16 @@
       checkboxSetting("autoAllowAccess", "Click Allow access automatically", "Off by default."),
       checkboxSetting("autoFix", "Click AI Studio Auto-fix automatically", "Off by default because it can modify generated files."),
       checkboxSetting("autoDownloadOnDone", "Download ZIP after the whole stack completes"),
-      el("div", { className: "aisq-shortcuts" }, [el("strong", { text: "Shortcuts" }), el("span", { text: "Alt+Shift+A — toggle panel" }), el("span", { text: "Alt+Enter — start/resume stack" })])
+      el("div", { className: "aisq-shortcuts" }, [
+        el("strong", { text: "Shortcuts" }), 
+        el("span", { text: "Alt+Shift+A — toggle panel" }), 
+        el("span", { text: "Alt+Enter — start/resume stack" }),
+        button("Reload Extension (Dev)", () => {
+          const btn = shadow.querySelector("button:focus");
+          if (btn) btn.textContent = "Reloading...";
+          chrome.runtime.sendMessage({ type: "AISQ_RELOAD_EXTENSION" });
+        }, "ghost", "Hard-reloads the extension background worker and injects fresh content scripts without reloading the webpage")
+      ])
     ]);
   }
 

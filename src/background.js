@@ -78,9 +78,28 @@ if (chrome.runtime?.onMessage?.addListener) {
       sendResponse({ tabId: sender?.tab?.id ?? null });
       return false;
     }
+    if (message?.type === "AISQ_RELOAD_EXTENSION") {
+      setTimeout(() => chrome.runtime.reload(), 100);
+      return false;
+    }
     if (!["AISQ_LEASE_ACQUIRE", "AISQ_LEASE_HEARTBEAT", "AISQ_LEASE_RELEASE"].includes(message?.type)) return false;
     serializedLeaseOperation(() => handleLeaseMessage(message, sender)).then(sendResponse, (error) => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
+  });
+}
+
+if (chrome.runtime?.onInstalled?.addListener) {
+  chrome.runtime.onInstalled.addListener(() => {
+    if (chrome.tabs && chrome.scripting) {
+      chrome.tabs.query({ url: "https://aistudio.google.com/*" }, (tabs) => {
+        for (const tab of tabs) {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ["src/core.js", "src/content.js"]
+          }).catch(() => {});
+        }
+      });
+    }
   });
 }
 
