@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AI Studio Queue Pilot">
+  <defs>
+    <linearGradient id="g" x1="18" y1="12" x2="112" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8b73ff"/>
+      <stop offset="1" stop-color="#4b2acb"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#g)"/>
+  <path d="M36 39h56M36 64h42M36 89h30" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="96" cy="89" r="12" fill="#55e69b" stroke="#173c2c" stroke-width="5"/>
+</svg>

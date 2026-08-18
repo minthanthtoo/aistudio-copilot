@@ -1,0 +1,16 @@
+{
+  "name": "google-aistudio-queue-pilot",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Manifest V3 queue automation for Google AI Studio Apps",
+  "scripts": {
+    "icons": "node scripts/generate-icons.cjs",
+    "check": "node --check src/core.js && node --check src/content.js && node --check src/background.js && node --check scripts/generate-icons.cjs && node --check scripts/package-extension.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "verify": "npm run check && npm test",
+    "package:extension": "npm run verify && node scripts/package-extension.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
