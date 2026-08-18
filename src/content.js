@@ -1285,11 +1285,13 @@
       button("✕", () => command("DELETE_CHAIN", { chainId: chain.id }), "danger ghost", `Delete ${chain.name}`)
     ]);
     
-    head.addEventListener("dblclick", (e) => {
-      if (e.target.closest("button:not(:first-child)")) return;
+    const triggerChainJump = (e) => {
+      if (e && e.target && e.target.closest("button:not(:first-child)")) return;
       if (locked) return;
-      e.preventDefault();
-      e.stopPropagation();
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       const doJump = () => command("FORCE_JUMP_TO_CHAIN", { chainId: chain.id });
       if (state.settings.skipJumpWarning) {
         doJump();
@@ -1313,7 +1315,20 @@
         shadow.append(dialog);
         dialog.showModal();
       }
+    };
+
+    let lastChainClick = 0;
+    head.addEventListener("click", (e) => {
+      if (e.target.closest("button:not(:first-child)")) return;
+      const now = Date.now();
+      if (now - lastChainClick < 450) {
+        lastChainClick = 0;
+        triggerChainJump(e);
+      } else {
+        lastChainClick = now;
+      }
     });
+    head.addEventListener("dblclick", triggerChainJump);
     card.append(head);
     return card;
   }
@@ -1455,7 +1470,7 @@
 
       const details = el("details", { className: `aisq-prompt aisq-${prompt.status}${highlightClass}` });
       if (isRunning || prompt.status === "error") details.open = true;
-      const indexBadge = el("span", { className: "aisq-index", text: `${index + 1}`, title: "Double-click to set as current prompt" });
+      const indexBadge = el("span", { className: "aisq-index", text: `${index + 1}`, title: "Click or double-click to set as current prompt" });
       const summary = el("summary", { className: "aisq-prompt-head" }, [indexBadge, el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), ...controls]);
       
       const triggerJump = (e) => {
@@ -1489,6 +1504,19 @@
         }
       };
 
+      indexBadge.addEventListener("click", triggerJump);
+      
+      let lastPromptClick = 0;
+      summary.addEventListener("click", (e) => {
+        if (e.target.closest("button") || e.target.closest(".aisq-index")) return;
+        const now = Date.now();
+        if (now - lastPromptClick < 450) {
+          lastPromptClick = 0;
+          triggerJump(e);
+        } else {
+          lastPromptClick = now;
+        }
+      });
       summary.addEventListener("dblclick", triggerJump);
       
       details.append(
@@ -1817,7 +1845,8 @@
       .aisq-prompt-head { display:flex; gap:5px; align-items:center; cursor:pointer; list-style:none; }
       .aisq-prompt-head::-webkit-details-marker { display:none; }
       .aisq-prompt-head strong { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
-      .aisq-index { flex:0 0 24px; display:grid; place-items:center; height:24px; border-radius:7px; background:#302d39; }
+      .aisq-index { flex:0 0 24px; display:grid; place-items:center; height:24px; border-radius:7px; background:#302d39; user-select:none; cursor:pointer; transition:background 0.15s, transform 0.1s, box-shadow 0.15s; }
+      .aisq-index:hover { background:#4f4863; color:#fff; transform:scale(1.1); box-shadow:0 0 8px rgba(115,87,255,0.4); }
       .aisq-status { color:#aaa6b7; font-size:11px; }
       .aisq-error { padding:9px 10px; border:1px solid #ff6d6948; border-radius:9px; background:#5a25273d; color:#ffc0bd; }
       .aisq-global-error { margin:0 16px; }
