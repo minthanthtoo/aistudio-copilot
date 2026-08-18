@@ -213,14 +213,15 @@
         .find(el => el.offsetParent !== null || visible(el)) || null;
     }
 
-    // Thinking indicator text
-    const thinkingNode = deepQueryAll("ms-thinking-indicator, .thinking-text")[0] || null;
+    // Thinking indicator text (must be visible)
+    const thinkingNode = chat ? Array.from(chat.querySelectorAll('ms-thinking-indicator, .thinking-text'))
+      .find(el => visible(el)) || null : null;
     const thinkingText = thinkingNode ? textOf(thinkingNode) : "";
 
     // "running" class on the send button is the most reliable busy signal.
     const isRunning = !!(sendBtn?.classList.contains("running") ||
       thinkingNode ||
-      deepQueryAll("ms-gradient-spinner")[0]);
+      (chat ? Array.from(chat.querySelectorAll('ms-gradient-spinner')).some(el => visible(el)) : false));
 
     // When running: submit = null (can't submit again), stop = the running button.
     const stop = isRunning ? (sendBtn || deepQueryAll('button.send-button.running, button[aria-label*="Stop"]')[0] || null) : null;
