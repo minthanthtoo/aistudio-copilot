@@ -1286,8 +1286,10 @@
     ]);
     
     head.addEventListener("dblclick", (e) => {
+      if (e.target.closest("button:not(:first-child)")) return;
       if (locked) return;
       e.preventDefault();
+      e.stopPropagation();
       const doJump = () => command("FORCE_JUMP_TO_CHAIN", { chainId: chain.id });
       if (state.settings.skipJumpWarning) {
         doJump();
@@ -1443,34 +1445,32 @@
       if (isRunning) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
       
       let prefaceBanner = null;
-      if (hasPreface) {
-        if (isIntroActive) {
-          const snippet = chain.preface.length > 95 ? chain.preface.slice(0, 92) + "..." : chain.preface;
-          prefaceBanner = el("div", { className: "aisq-preface-attached-banner", title: `Prepended preface:\n${chain.preface}` }, [
-            el("span", { className: "aisq-preface-attached-tag", text: "📌 Intro Attached:" }),
-            el("span", { className: "aisq-preface-attached-text", text: snippet })
-          ]);
-        } else {
-          prefaceBanner = el("div", { className: "aisq-preface-detached-banner" }, [
-            el("span", { className: "aisq-preface-detached-tag", text: "⚠️ Standalone Prompt (Intro excluded)" })
-          ]);
-        }
+      if (hasPreface && isIntroActive) {
+        const snippet = chain.preface.length > 70 ? chain.preface.slice(0, 67) + "..." : chain.preface;
+        prefaceBanner = el("div", { className: "aisq-preface-attached-banner", title: `Prepended preface:\n${chain.preface}` }, [
+          el("span", { className: "aisq-preface-attached-tag", text: "📌 +Intro" }),
+          el("span", { className: "aisq-preface-attached-text", text: snippet })
+        ]);
       }
 
       const details = el("details", { className: `aisq-prompt aisq-${prompt.status}${highlightClass}` });
       if (isRunning || prompt.status === "error") details.open = true;
-      const summary = el("summary", { className: "aisq-prompt-head" }, [el("span", { className: "aisq-index", text: `${index + 1}` }), el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), ...controls]);
+      const indexBadge = el("span", { className: "aisq-index", text: `${index + 1}`, title: "Double-click to set as current prompt" });
+      const summary = el("summary", { className: "aisq-prompt-head" }, [indexBadge, el("strong", { text: prompt.label }), el("span", { className: "aisq-status", text: prompt.status }), ...controls]);
       
-      summary.addEventListener("dblclick", (e) => {
-        if (locked) return;
-        e.preventDefault();
+      const triggerJump = (e) => {
+        if (e && e.target && e.target.closest("button")) return;
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         const doJump = () => command("JUMP_TO_PROMPT", { chainId: chain.id, promptId: prompt.id });
         if (state.settings.skipJumpWarning) {
           doJump();
         } else {
           const dialog = el("dialog", { className: "aisq-dialog" });
-          const title = el("h3", { text: "Jump to Prompt" });
-          const msg = el("p", { text: "You are jumping to a different prompt. This will mark earlier pending prompts as skipped. Continue?" });
+          const title = el("h3", { text: "Set Current Prompt" });
+          const msg = el("p", { text: `Jump to prompt ${index + 1} (${prompt.label})? Earlier pending prompts will be marked skipped.` });
           const label = el("label", { className: "aisq-checkbox-label" });
           const checkbox = el("input", { type: "checkbox" });
           label.append(checkbox, document.createTextNode(" Do not show again"));
@@ -1487,7 +1487,9 @@
           shadow.append(dialog);
           dialog.showModal();
         }
-      });
+      };
+
+      summary.addEventListener("dblclick", triggerJump);
       
       details.append(
         summary,
@@ -1506,8 +1508,11 @@
       if (confirm(`Delete ${chain.name}? This removes its prompts.`)) command("DELETE_CHAIN", { chainId: chain.id }, { history: { kind: "chain_deleted", message: `Deleted ${chain.name}` } });
     }, "danger ghost");
     const duplicate = button("Duplicate chain", () => command("DUPLICATE_CHAIN", { chainId: chain.id }, { history: { kind: "chain_duplicated", message: `Duplicated ${chain.name}` } }), "ghost");
+    const extractPrefaceBtn = button("Extract shared intro", () => {
+      command("EXTRACT_CHAIN_PREFACE", { chainId: chain.id });
+    }, "ghost", "Detect and extract repeating intro text from prompts into Preface (Intro)");
     const skip = button("Skip chain", () => command("SKIP_CHAIN", { chainId: chain.id }, { history: { kind: "chain_skipped", message: `Skipped ${chain.name}` } }), "ghost");
-    wrap.append(list, field("Add prompt", addPromptText), el("div", { className: "aisq-actions" }, [button("Add prompt", addPrompt, "primary"), duplicate, skip, button("Reset chain", resetSelectedChain, "ghost"), deleteChain]));
+    wrap.append(list, field("Add prompt", addPromptText), el("div", { className: "aisq-actions" }, [button("Add prompt", addPrompt, "primary"), duplicate, extractPrefaceBtn, skip, button("Reset chain", resetSelectedChain, "ghost"), deleteChain]));
     return wrap;
   }
 
@@ -1805,9 +1810,9 @@
       .aisq-preface-on { color:#55e69b !important; border-color:rgba(85,230,155,0.4) !important; background:rgba(85,230,155,0.08) !important; }
       .aisq-preface-off { color:#85818f !important; border-color:rgba(255,255,255,0.1) !important; }
       .aisq-preface-disabled { color:#6b6777 !important; border-color:rgba(255,255,255,0.06) !important; opacity:0.75; }
-      .aisq-preface-attached-banner { display:flex; align-items:flex-start; gap:6px; padding:6px 9px; margin-bottom:7px; background:rgba(115,87,255,0.08); border:1px dashed rgba(115,87,255,0.3); border-radius:7px; font-size:11px; color:#c4b5fd; line-height:1.35; }
-      .aisq-preface-attached-tag { font-weight:600; white-space:nowrap; color:#a78bfa; }
-      .aisq-preface-attached-text { overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word; }
+      .aisq-preface-attached-banner { display:flex; align-items:center; gap:6px; padding:4px 8px; margin-bottom:6px; background:rgba(115,87,255,0.08); border:1px dashed rgba(115,87,255,0.3); border-radius:6px; font-size:11px; color:#c4b5fd; line-height:1.3; }
+      .aisq-preface-attached-tag { font-weight:600; white-space:nowrap; color:#a78bfa; font-size:10px; text-transform:uppercase; letter-spacing:0.3px; }
+      .aisq-preface-attached-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#b9a9ff; opacity:0.85; }
       .aisq-preface-detached-banner { display:flex; align-items:center; gap:6px; padding:5px 9px; margin-bottom:7px; background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.12); border-radius:7px; font-size:11px; color:#948fa3; }
       .aisq-prompt-head { display:flex; gap:5px; align-items:center; cursor:pointer; list-style:none; }
       .aisq-prompt-head::-webkit-details-marker { display:none; }

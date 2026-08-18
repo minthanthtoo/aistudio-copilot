@@ -119,6 +119,32 @@
     }));
   }
 
+  function extractCommonPreface(preface, parts) {
+    if (preface && preface.trim()) return { preface: preface.trim(), parts };
+    if (!parts || parts.length < 2) return { preface: preface || "", parts: parts || [] };
+    const splitParts = parts.map((p) => p.split("\n"));
+    const minLines = Math.min(...splitParts.map((sp) => sp.length));
+    let commonLineCount = 0;
+    for (let i = 0; i < minLines; i++) {
+      const line = splitParts[0][i];
+      if (splitParts.every((sp) => sp[i] === line)) {
+        commonLineCount++;
+      } else {
+        break;
+      }
+    }
+    if (commonLineCount > 0) {
+      const commonText = splitParts[0].slice(0, commonLineCount).join("\n").trim();
+      if (commonText.length >= 15) {
+        const trimmedParts = splitParts.map((sp) => sp.slice(commonLineCount).join("\n").trim()).filter(Boolean);
+        if (trimmedParts.length === parts.length && trimmedParts.every((p) => p.length > 0)) {
+          return { preface: commonText, parts: trimmedParts };
+        }
+      }
+    }
+    return { preface: preface || "", parts };
+  }
+
   function parsePromptPack(raw, strategy = "auto") {
     const text = normalizeText(raw);
     if (!text) return { strategy: "empty", preface: "", prompts: [] };
@@ -135,7 +161,8 @@
     if (strategy !== "auto") {
       const selected = strategies[strategy] ? strategies[strategy]() : null;
       if (selected && selected.parts.length) {
-        return { strategy, preface: selected.preface || "", prompts: promptRecords(selected.parts) };
+        const extracted = extractCommonPreface(selected.preface, selected.parts);
+        return { strategy, preface: extracted.preface || "", prompts: promptRecords(extracted.parts) };
       }
       return { strategy: "single", preface: "", prompts: promptRecords([text]) };
     }
@@ -143,7 +170,8 @@
     for (const name of ["delimiter", "stage", "id", "prompt", "numbered"]) {
       const result = strategies[name]();
       if (result && result.parts.length) {
-        return { strategy: name, preface: result.preface || "", prompts: promptRecords(result.parts) };
+        const extracted = extractCommonPreface(result.preface, result.parts);
+        return { strategy: name, preface: extracted.preface || "", prompts: promptRecords(extracted.parts) };
       }
     }
     return { strategy: "single", preface: "", prompts: promptRecords([text]) };
@@ -606,12 +634,36 @@
       const currentIndex = chain.prompts.indexOf(prompt);
       for (let i = 0; i < currentIndex; i++) {
         const p = chain.prompts[i];
-        if (p.status === "queued" || p.status === "error") p.status = "skipped";
+        if (p.status === "queued" || p.status === "error" || p.status === "pending") p.status = "skipped";
       }
-      if (prompt.status === "skipped") prompt.status = "queued";
+      prompt.status = "queued";
+      prompt.error = null;
+      prompt.attempts = 0;
+      prompt.submittedAt = null;
+      prompt.completedAt = null;
+      for (let i = currentIndex + 1; i < chain.prompts.length; i++) {
+        const p = chain.prompts[i];
+        if (p.status === "skipped") p.status = "queued";
+      }
       state.runner.activeChainId = chain.id;
-      state.runner.pendingPromptId = prompt.id;
+      state.runner.pendingPromptId = null;
+      if (state.runner.enabled) {
+        state.runner.phase = PHASES.READY;
+      }
       chain.updatedAt = nowISO();
+    } else if (type === "EXTRACT_CHAIN_PREFACE") {
+      if (!chain) return reject("Chain not found");
+      const texts = chain.prompts.map((p) => p.text);
+      const extracted = extractCommonPreface(chain.preface, texts);
+      if (extracted.preface && extracted.preface !== chain.preface) {
+        chain.preface = extracted.preface;
+        chain.prompts.forEach((p, idx) => {
+          p.text = extracted.parts[idx] || p.text;
+          p.label = labelForPrompt(p.text, idx);
+          p.includePreface = true;
+        });
+        chain.updatedAt = nowISO();
+      }
     } else if (type === "ADD_PROMPT") {
       if (!chain) return reject("Chain not found");
       if (chainIsLocked(state, chain.id)) return reject("The active chain has a pending prompt");
