@@ -9,6 +9,8 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "u
 const files = [
   "manifest.json",
   "src/core.js",
+  "src/spec-engine.js",
+  "src/chatgpt-extractor.js",
   "src/content.js",
   "src/background.js",
   "assets/icon16.png",

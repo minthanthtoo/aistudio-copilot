@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_FILES = ["src/core.js", "src/spec-engine.js", "src/content.js"];
+const CONTENT_FILES = ["src/core.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js"];
 const LEASE_KEY = "aisqRunnerLease";
 const DEFAULT_LEASE_MS = 20_000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -82,6 +82,16 @@ if (chrome.runtime?.onMessage?.addListener) {
       setTimeout(() => chrome.runtime.reload(), 100);
       return false;
     }
+    if (message?.type === "AISQ_FETCH_URL") {
+      fetch(message.url, { headers: { "Accept": "text/html" } })
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+          return res.text();
+        })
+        .then(html => sendResponse({ ok: true, html }))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true; // async response
+    }
     if (!["AISQ_LEASE_ACQUIRE", "AISQ_LEASE_HEARTBEAT", "AISQ_LEASE_RELEASE"].includes(message?.type)) return false;
     serializedLeaseOperation(() => handleLeaseMessage(message, sender)).then(sendResponse, (error) => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
@@ -95,7 +105,7 @@ if (chrome.runtime?.onInstalled?.addListener) {
         for (const tab of tabs) {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ["src/core.js", "src/spec-engine.js", "src/content.js"]
+            files: ["src/core.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js"]
           }).catch(() => {});
         }
       });

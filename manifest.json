@@ -10,7 +10,7 @@
     "128": "assets/icon128.png"
   },
   "permissions": ["storage", "scripting"],
-  "host_permissions": ["https://aistudio.google.com/*"],
+  "host_permissions": ["https://aistudio.google.com/*", "https://chatgpt.com/*"],
   "background": {
     "service_worker": "src/background.js"
   },
@@ -33,7 +33,7 @@
   "content_scripts": [
     {
       "matches": ["https://aistudio.google.com/*"],
-      "js": ["src/core.js", "src/spec-engine.js", "src/content.js"],
+      "js": ["src/core.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js"],
       "run_at": "document_idle"
     }
   ]

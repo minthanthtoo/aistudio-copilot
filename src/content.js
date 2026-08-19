@@ -1281,16 +1281,19 @@
     state.ui.specScreen = state.ui.specScreen || 0;
     state.ui.specAnswers = state.ui.specAnswers || {};
 
-    const modeToggle = el("div", { className: "aisq-mode-toggle", style: "display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; gap: 8px;" }, [
-      button("Paste", () => mutate(() => { state.ui.specMode = "paste"; requestRender(); }), state.ui.specMode === "paste" ? "primary" : "ghost"),
-      button("✨ Generate", () => mutate(() => { state.ui.specMode = "generate"; requestRender(); }), state.ui.specMode === "generate" ? "primary" : "ghost")
+    const modeToggle = el("div", { className: "aisq-mode-toggle", style: "display: grid; grid-template-columns: 1fr 1fr 1fr; margin-bottom: 12px; gap: 8px;" }, [
+      button("📋 Paste", () => mutate(() => { state.ui.specMode = "paste"; requestRender(); }), state.ui.specMode === "paste" ? "primary" : "ghost"),
+      button("✨ Wizard", () => mutate(() => { state.ui.specMode = "generate"; requestRender(); }), state.ui.specMode === "generate" ? "primary" : "ghost"),
+      button("🔗 Import", () => mutate(() => { state.ui.specMode = "import"; requestRender(); }), state.ui.specMode === "import" ? "primary" : "ghost")
     ]);
 
     let content;
     if (state.ui.specMode === "paste") {
       content = renderPasteMode();
-    } else {
+    } else if (state.ui.specMode === "generate") {
       content = renderWizardMode();
+    } else {
+      content = renderImportMode();
     }
 
     return el("div", { className: "aisq-section" }, [modeToggle, content]);
@@ -1304,6 +1307,13 @@
       on: {
         input: (event) => {
           state.ui.draft = event.target.value;
+          if (/https?:\/\/(www\.)?chatgpt\.com\/share\/[0-9a-fA-F-]+/.test(state.ui.draft)) {
+            state.ui.specMode = "import";
+            state.ui.importSource = state.ui.draft;
+            state.ui.draft = "";
+            requestRender();
+            return;
+          }
           const parsed = Core.parsePromptPack(state.ui.draft, state.ui.splitStrategy);
           state.ui.detectedStrategy = parsed.strategy;
           scheduleSave();
@@ -1345,6 +1355,127 @@
       stackMeter,
       el("div", { className: "aisq-actions" }, [button("Add chain", add, "primary"), button("Add & start", addRun, "ghost")])
     ]);
+  }
+
+  function renderImportMode() {
+    state.ui.importSource = state.ui.importSource || "";
+    state.ui.importState = state.ui.importState || "idle"; // idle, fetching, extracting, success, error
+    state.ui.importStatusText = state.ui.importStatusText || "";
+    state.ui.importResult = state.ui.importResult || null;
+
+    if (state.ui.importState === "idle" || state.ui.importState === "error") {
+      const intake = el("textarea", {
+        className: "aisq-draft",
+        style: "min-height: 80px;",
+        value: state.ui.importSource,
+        placeholder: "Paste ChatGPT share URL, or raw HTML/JSON here...",
+        on: { input: e => { state.ui.importSource = e.target.value; requestRender(); } }
+      });
+
+      const analyzeBtn = button("Fetch & Analyze", async () => {
+        const source = state.ui.importSource.trim();
+        if (!source) return;
+
+        mutate(() => {
+          state.ui.importState = "fetching";
+          state.ui.importStatusText = "Fetching conversation data...";
+        });
+        requestRender();
+
+        try {
+          const extractorApi = globalThis.AISQChatGPTExtractor;
+          if (!extractorApi) throw new Error("Extractor API not loaded.");
+
+          let rawHtml = source;
+          if (source.startsWith("http")) {
+            const res = await chrome.runtime.sendMessage({ type: "AISQ_FETCH_URL", url: source });
+            if (!res.ok) throw new Error(res.error || "Failed to fetch URL.");
+            rawHtml = res.html;
+          }
+
+          mutate(() => {
+            state.ui.importState = "extracting";
+            state.ui.importStatusText = "Extracting messages & analyzing requirements...";
+          });
+          requestRender();
+
+          // Yield to let UI update
+          await new Promise(r => setTimeout(r, 50));
+
+          const conversation = extractorApi.extractConversation(rawHtml, source);
+          const specAnswers = extractorApi.analyzeTranscript(conversation);
+
+          mutate(() => {
+            state.ui.importResult = { conversation, specAnswers };
+            state.ui.importState = "success";
+            state.ui.specAnswers = specAnswers; // prefill wizard
+          });
+          requestRender();
+
+        } catch (err) {
+          mutate(() => {
+            state.ui.importState = "error";
+            state.ui.importStatusText = err.message;
+          });
+          requestRender();
+        }
+      }, state.ui.importSource ? "primary" : "ghost");
+      if (!state.ui.importSource) analyzeBtn.disabled = true;
+
+      return el("div", {}, [
+        el("p", { className: "aisq-copy", text: "Import an existing ChatGPT brainstorming session. We'll extract the tech stack and core features automatically." }),
+        field("Chat Source", intake),
+        state.ui.importState === "error" ? el("div", { style: "color: red; font-size: 11px; margin-bottom: 8px;" }, [el("strong", { text: "Error: " }), document.createTextNode(state.ui.importStatusText)]) : null,
+        el("div", { className: "aisq-actions" }, [analyzeBtn])
+      ]);
+    }
+
+    if (state.ui.importState === "fetching" || state.ui.importState === "extracting") {
+      return el("div", { style: "text-align: center; padding: 24px;" }, [
+        el("div", { className: "aisq-spinner", style: "margin: 0 auto 12px auto; display: block;" }),
+        el("div", { style: "font-size: 13px; font-weight: 500;" }, [document.createTextNode(state.ui.importStatusText)])
+      ]);
+    }
+
+    if (state.ui.importState === "success") {
+      const { conversation, specAnswers } = state.ui.importResult;
+      
+      const summaryCard = el("div", { style: "background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 12px;" }, [
+        el("div", { style: "font-weight: 600; font-size: 14px; margin-bottom: 4px;" }, [document.createTextNode("🎉 Analysis Complete!")]),
+        el("div", { style: "font-size: 12px; margin-bottom: 8px; color: #475569;" }, [document.createTextNode(`Extracted ${conversation.visibleMessages.length} messages`)]),
+        
+        el("div", { style: "display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; font-size: 12px;" }, [
+          el("strong", { text: "Title:" }), el("span", { text: specAnswers.name }),
+          el("strong", { text: "Type:" }), el("span", { text: specAnswers.archetype }),
+          el("strong", { text: "Stack:" }), el("span", { text: [specAnswers.frontend, specAnswers.backend, specAnswers.database].filter(x => x && x !== "None").join(", ") || "None specified" })
+        ])
+      ]);
+
+      const reviewBtn = button("✨ Review & Edit in Wizard", () => {
+        mutate(() => {
+          state.ui.specMode = "generate";
+          state.ui.specScreen = 1;
+          state.ui.importState = "idle";
+        });
+        requestRender();
+      }, "ghost");
+
+      const generateBtn = button("🚀 Generate Prompt Chain", () => {
+        mutate(() => {
+          state.ui.specMode = "generate";
+          state.ui.specScreen = 2;
+          state.ui.importState = "idle";
+        });
+        requestRender();
+      }, "primary");
+
+      return el("div", {}, [
+        summaryCard,
+        el("div", { className: "aisq-actions" }, [reviewBtn, generateBtn])
+      ]);
+    }
+
+    return el("div", { text: "Unknown state" });
   }
 
   function renderWizardMode() {
