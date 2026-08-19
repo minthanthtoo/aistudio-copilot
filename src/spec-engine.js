@@ -4,33 +4,33 @@
   const SCALES = ["hobby", "mvp", "startup", "production", "enterprise"];
   const SCALE_INDEX = { hobby: 0, mvp: 1, startup: 2, production: 3, enterprise: 4 };
 
-  const ARCHETYPES = [
-    { id: "web-app", label: "Web App", emoji: "🌐" },
-    { id: "e-commerce", label: "E-Commerce", emoji: "🛒" },
-    { id: "saas", label: "SaaS Platform", emoji: "📊" },
-    { id: "ai-ml-app", label: "AI / ML App", emoji: "🤖" },
-    { id: "portfolio", label: "Portfolio", emoji: "📁" },
-    { id: "dashboard", label: "Dashboard", emoji: "📋" },
-    { id: "mobile-app", label: "Mobile App", emoji: "📱" },
-    { id: "game", label: "Game", emoji: "🎮" },
-    { id: "3d-cad", label: "3D / CAD", emoji: "🏗️" },
-    { id: "cloud-app", label: "Cloud App", emoji: "☁️" },
-    { id: "enterprise", label: "Enterprise", emoji: "🏢" },
-    { id: "api-service", label: "API Service", emoji: "⚡" },
-    { id: "agent-swarm", label: "Agent Swarm", emoji: "🐝" }
-  ];
+  const ARCHETYPES = {
+    "web-app": { label: "Web App", emoji: "🌐" },
+    "e-commerce": { label: "E-Commerce", emoji: "🛒" },
+    "saas": { label: "SaaS Platform", emoji: "📊" },
+    "ai-ml-app": { label: "AI / ML App", emoji: "🤖" },
+    "portfolio": { label: "Portfolio", emoji: "📁" },
+    "dashboard": { label: "Dashboard", emoji: "📋" },
+    "mobile-app": { label: "Mobile App", emoji: "📱" },
+    "game": { label: "Game", emoji: "🎮" },
+    "3d-cad": { label: "3D / CAD", emoji: "🏗️" },
+    "cloud-app": { label: "Cloud App", emoji: "☁️" },
+    "enterprise": { label: "Enterprise", emoji: "🏢" },
+    "api-service": { label: "API Service", emoji: "⚡" },
+    "agent-swarm": { label: "Agent Swarm", emoji: "🐝" }
+  };
 
-  const GENRES = [
-    { id: "minimal", label: "Minimal", description: "Minimalist, clean, lots of whitespace. Focus on typography and crisp layouts. Use a very constrained monochrome palette with perhaps one accent color." },
-    { id: "corporate", label: "Corporate", description: "Professional, trustworthy, enterprise-grade. Use traditional layouts with solid navigation. Blue or neutral branding, clear CTA buttons, high-contrast text." },
-    { id: "playful", label: "Playful", description: "Vibrant colors, rounded corners, bubbly typography, subtle micro-interactions, friendly copywriting, engaging and fun." },
-    { id: "editorial", label: "Editorial", description: "Magazine-style layout, large serif typography mixed with clean sans-serif body text. Asymmetrical grids, large high-quality imagery, refined aesthetic." },
-    { id: "dashboard", label: "Dashboard", description: "Data-dense but clear. Card-based layouts, robust sidebar navigation. Use subtle borders, light grays for grouping, and distinct categorical colors for charts and status badges." },
-    { id: "glassmorphism", label: "Glassmorphism", description: "Translucent frosted-glass effects on cards and modals, colorful blurred gradient backgrounds, thin semi-transparent borders, floating UI elements." },
-    { id: "brutalist", label: "Brutalist", description: "Raw, harsh, utilitarian. High-contrast colors (often black/white + neon), thick borders, monospaced or huge bold typography, visible grid lines." },
-    { id: "hacker", label: "Hacker / Cyberpunk", description: "Dark mode native, neon green or magenta accents, monospaced terminal fonts, glowing effects, grid/matrix backgrounds, tech-focused aesthetic." },
-    { id: "production", label: "Production (No Vibe-Coding)", description: "Focus exclusively on functional excellence, semantic HTML, comprehensive accessibility (WAI-ARIA), proper focus states, and scalable component architecture over stylistic flourishes." }
-  ];
+  const GENRES = {
+    "minimal": { label: "Minimal", description: "Minimalist, clean, lots of whitespace. Focus on typography and crisp layouts. Use a very constrained monochrome palette with perhaps one accent color." },
+    "corporate": { label: "Corporate", description: "Professional, trustworthy, enterprise-grade. Use traditional layouts with solid navigation. Blue or neutral branding, clear CTA buttons, high-contrast text." },
+    "playful": { label: "Playful", description: "Vibrant colors, rounded corners, bubbly typography, subtle micro-interactions, friendly copywriting, engaging and fun." },
+    "editorial": { label: "Editorial", description: "Magazine-style layout, large serif typography mixed with clean sans-serif body text. Asymmetrical grids, large high-quality imagery, refined aesthetic." },
+    "dashboard": { label: "Dashboard", description: "Data-dense but clear. Card-based layouts, robust sidebar navigation. Use subtle borders, light grays for grouping, and distinct categorical colors for charts and status badges." },
+    "glassmorphism": { label: "Glassmorphism", description: "Translucent frosted-glass effects on cards and modals, colorful blurred gradient backgrounds, thin semi-transparent borders, floating UI elements." },
+    "brutalist": { label: "Brutalist", description: "Raw, harsh, utilitarian. High-contrast colors (often black/white + neon), thick borders, monospaced or huge bold typography, visible grid lines." },
+    "hacker": { label: "Hacker / Cyberpunk", description: "Dark mode native, neon green or magenta accents, monospaced terminal fonts, glowing effects, grid/matrix backgrounds, tech-focused aesthetic." },
+    "production": { label: "Production (No Vibe-Coding)", description: "Focus exclusively on functional excellence, semantic HTML, comprehensive accessibility (WAI-ARIA), proper focus states, and scalable component architecture over stylistic flourishes." }
+  };
 
   const FEATURE_SUGGESTIONS = {
     "web-app": ["User Auth", "Profile Settings", "Search", "Pagination", "Notifications", "Social Share", "Comments", "File Upload"],
@@ -50,107 +50,108 @@
 
   const DEFAULT_STACKS = {
     "web-app": { frontend: "React + Tailwind CSS", backend: "Node.js + Express", database: "PostgreSQL", hosting: "Vercel" },
-    "e-commerce": { frontend: "Next.js", backend: "Next.js API Routes", database: "PostgreSQL", hosting: "Vercel" },
+    "e-commerce": { frontend: "Next.js 14 App Router", backend: "Next.js API Routes", database: "PostgreSQL (Supabase)", hosting: "Vercel" },
     "saas": { frontend: "Next.js", backend: "Node.js + NestJS", database: "PostgreSQL", hosting: "AWS" },
-    "ai-ml-app": { frontend: "React", backend: "Python + FastAPI", database: "Pinecone / Postgres (pgvector)", hosting: "Render" },
+    "ai-ml-app": { frontend: "React", backend: "Python + FastAPI", database: "PostgreSQL (pgvector)", hosting: "Render" },
     "portfolio": { frontend: "Astro", backend: "None", database: "None", hosting: "GitHub Pages" },
     "dashboard": { frontend: "Vue.js", backend: "Node.js + Express", database: "MySQL", hosting: "Vercel" },
     "mobile-app": { frontend: "React Native", backend: "Firebase", database: "Firestore", hosting: "App Stores" },
-    "game": { frontend: "Vanilla JS + Canvas API", backend: "Node.js (for multiplayer)", database: "Redis", hosting: "Vercel" },
+    "game": { frontend: "Vanilla JS + Canvas API", backend: "Node.js", database: "Redis", hosting: "Vercel" },
     "3d-cad": { frontend: "React + Three.js", backend: "Python", database: "PostgreSQL", hosting: "Vercel" },
     "cloud-app": { frontend: "React", backend: "Go", database: "PostgreSQL", hosting: "AWS" },
-    "enterprise": { frontend: "Angular", backend: "Java Spring Boot", database: "Oracle / PostgreSQL", hosting: "AWS" },
+    "enterprise": { frontend: "Angular", backend: "Java Spring Boot", database: "PostgreSQL", hosting: "AWS" },
     "api-service": { frontend: "None", backend: "Go / Node.js", database: "PostgreSQL", hosting: "AWS" },
-    "agent-swarm": { frontend: "React (Monitoring UI)", backend: "Python + LangChain/LlamaIndex", database: "PostgreSQL", hosting: "AWS" }
+    "agent-swarm": { frontend: "React", backend: "Python + LangChain", database: "PostgreSQL", hosting: "AWS" }
   };
 
-  // Stage Builders
+  // ----- High-Quality Stage Builders -----
+
+  function formatScreens(screens) {
+    if (!screens || !screens.length) return "1. Home (/)";
+    if (Array.isArray(screens)) return screens.map((s, i) => `${i + 1}. ${s}`).join("\n");
+    return "1. " + screens;
+  }
+
   function stageFoundation(answers) {
-    const screensList = answers.screens && answers.screens.length ? answers.screens.map(s => `- ${s}`).join('\n') : "- Home\n- Dashboard\n- Settings";
-    const navStructure = answers.flowDescription || "Standard application navigation layout.";
+    const screens = formatScreens(answers.screens);
+    const nav = answers.flowDescription || "Standard desktop top bar and mobile hamburger/bottom navigation.";
     
     return `
-Implement the foundation and core navigation shell of the application.
-This is the base that all other features will be built upon.
+Build the complete application shell with routing and navigation.
 
-**Core Requirements:**
-1. Setup the project structure using the specified tech stack (${answers.frontend}).
-2. Implement the main application layout and routing.
-3. Establish the navigation structure: ${navStructure}
-4. Setup the foundational styling using the selected genre: ${answers.genre}.
+SCREENS TO SCAFFOLD (each must render meaningful placeholder content):
+${screens}
 
-**Screens to scaffold (empty shells with proper routing):**
-${screensList}
-
-**Implementation Details:**
-- MUST include a top-level Layout component that handles common UI elements (navigation, footers, etc.).
-- MUST set up global error boundaries and a 404 Not Found page.
-- Ensure the routing handles both authenticated and unauthenticated states gracefully (placeholder logic if auth is not yet implemented).
-- MUST verify that navigation works seamlessly between all scaffolded screens.
+NAVIGATION & LAYOUT:
+- ${nav}
+- Build all routes with a shared Layout component.
+- Ensure proper routing configuration for all specified screens.
+- Use realistic placeholder data (not lorem ipsum). Every page MUST render something meaningful.
 `;
   }
 
   function stageDataModel(answers) {
     return `
-Implement the data model and backend services.
+Implement the database schema and core backend logic using ${answers.database} and ${answers.backend}.
 
-**Core Requirements:**
-1. Design the database schema and define models/tables for the application using ${answers.database}.
-2. Set up the backend framework (${answers.backend}) and establish database connections.
-3. Create API routes or service layers to interact with the data.
+TABLES / COLLECTIONS:
+- users (id, email, display_name, role, created_at)
+- Design and document the necessary schemas to support: ${answers.features || "Core application entities"}
+- Ensure proper foreign key constraints and indexes.
 
-**Specific Implementation:**
-- Base the schema on the features described: ${answers.features || "Core entity models"}.
-- Included features: ${(answers.featureChips || []).join(', ')}.
-- Create migration scripts or schema definitions.
-- Write realistic seed data scripts. Do NOT use purely "lorem ipsum" data; generate domain-specific realistic mock data.
-- Setup typed query hooks or ORM integrations on the backend and frontend.
+DATA ACCESS & SECURITY:
+- Implement data access patterns (ORMs, query builders, or raw SQL).
+- Define access control rules (Row-Level Security or application-level authorization).
+- Customers should only read/write their own data; Admins have full access.
 
-**Verify:**
-- API endpoints can successfully perform CRUD operations.
-- The seed data populates correctly.
+SEED DATA: 
+- Create robust seed scripts with realistic, domain-specific mock data. Do NOT use "lorem ipsum".
+- Include at least 3 distinct entities and 10+ records per entity to properly test UI states.
+
+Create API clients or typed query hooks for the frontend to consume these services.
 `;
   }
 
   function stageCoreFeatures(answers) {
+    const featureText = answers.features || "Implement the primary application functionality.";
+    const chips = answers.featureChips && answers.featureChips.length ? "\nKey Modules: " + answers.featureChips.join(", ") : "";
     return `
-Implement the core functionality and features.
+Implement the complete end-to-end user workflows for the core features.
 
-**Core Features to build:**
-${answers.features || "Implement the primary application functionality."}
-${answers.featureChips && answers.featureChips.length ? "Key Modules: " + answers.featureChips.join(", ") : ""}
+FEATURES:
+${featureText}${chips}
 
-**Implementation Details:**
-- Each feature MUST include its relevant UI components and connect to the backend services created in the previous stage.
-- Implement comprehensive input validation (both client-side and server-side).
-- Handle all edge cases: loading states, error states, and empty states.
+IMPLEMENTATION DETAILS:
+- Each workflow MUST include its relevant UI components and connect to the backend services.
+- Implement comprehensive input validation (client-side and server-side).
+- Every interaction needs: loading spinner during async work, error toast on failure, empty state with helpful message and CTA.
 - Ensure state is managed properly across the application.
 - All forms MUST have clear success and error feedback.
-
-**Verify:**
-- Users can successfully complete the primary workflows of the application.
+- Use optimistic UI updates where appropriate to ensure a snappy user experience.
 `;
   }
 
   function stagePolish(answers) {
-    const productionExtra = answers.productionQuality ? "\n- Implement rigorous Web Content Accessibility Guidelines (WCAG) compliance (keyboard navigation, ARIA attributes).\n- Optimize core web vitals and minimize bundle size." : "";
+    const prodStr = answers.productionQuality ? 
+      "\n2. ACCESSIBILITY:\n   - All interactive elements keyboard-navigable with visible focus rings.\n   - ARIA labels on icon-only buttons.\n   - Color contrast ratio >= 4.5:1 on all text.\n   - Screen reader announcements for state changes." : "";
     
     return `
 Apply polish and prepare the application for a high-quality user experience.
 
-**Core Requirements:**
-1. Perform a comprehensive responsive audit. Ensure flawless layout on mobile, tablet, and desktop views.
-2. Polish animations, transitions, and micro-interactions according to the ${answers.genre} genre.
-3. Ensure consistent typography, spacing, and color usage throughout all screens.
+1. RESPONSIVE AUDIT:
+   - Test and fix every page at 375px (mobile), 768px (tablet), and 1280px (desktop).
+   - Mobile: Ensure all tap targets are >= 44px, no horizontal scroll, bottom nav functional.
+   - Tablet/Desktop: Ensure grids and flex layouts utilize available space optimally.${prodStr}
 
-**Specific Implementation:**
-- Implement global toast notifications for feedback.
-- Review and refine all loading states (skeletons or spinners).
-- Create helpful empty states for all lists/tables when no data is present.${productionExtra}
-${answers.darkMode ? "- Verify dark mode styling is consistent and readable across all components." : ""}
+3. LOADING & ERROR STATES:
+   - Skeleton loaders for data-heavy components.
+   - Error boundaries with "Something went wrong" + retry button at the page level.
+   - Global toast notification system (success/error/info).
 
-**Verify:**
-- Application looks and feels complete, responsive, and professional.
+4. PERFORMANCE & SEO:
+   - Lazy load images below the fold.
+   - Debounce rapid inputs (like search).
+   - Dynamic page titles and meta descriptions.
 `;
   }
 
@@ -158,20 +159,17 @@ ${answers.darkMode ? "- Verify dark mode styling is consistent and readable acro
     return `
 Implement security hardening and production-grade auth.
 
-**Core Requirements:**
-1. Implement the specified authentication method: ${answers.authType || "standard auth"}.
-2. Set up Role-Based Access Control (RBAC).
-3. Secure all API endpoints.
+CORE REQUIREMENTS:
+- Implement authentication strategy: ${answers.authType || "OAuth + Email/Password"}.
+- Set up Role-Based Access Control (RBAC) across the frontend and backend.
+- Secure all API endpoints against unauthorized access.
+${answers.security ? "\nSPECIFIC NEEDS:\n- " + answers.security : ""}
 
-**Specific Implementation:**
+HARDENING:
 - Implement robust CSRF and XSS protection.
-- Setup proper rate limiting on the backend.
-- Ensure all sensitive data (passwords, tokens) is properly hashed and encrypted.
-- Implement session management and secure cookies.
-${answers.compliance && answers.compliance.length ? `- Ensure architecture supports compliance requirements: ${answers.compliance.join(', ')}.` : ""}
-
-**Verify:**
-- Unauthorized access is strictly prevented at both the routing and API levels.
+- Setup proper rate limiting on the backend API.
+- Ensure all sensitive data is properly hashed and encrypted in transit and at rest.
+- Implement secure session management.
 `;
   }
 
@@ -179,19 +177,13 @@ ${answers.compliance && answers.compliance.length ? `- Ensure architecture suppo
     return `
 Establish the testing strategy and implement the core test suite.
 
-**Core Requirements:**
-1. Setup testing frameworks (e.g., Jest, Cypress, Playwright).
-2. Write unit tests for critical business logic and utility functions.
-3. Write integration tests for API endpoints.
-4. Write End-to-End (E2E) tests for the primary user workflows.
+REQUIREMENTS:
+1. Setup testing frameworks for unit and E2E testing (e.g., Jest, Playwright/Cypress).
+2. Write unit tests for critical business logic, utility functions, and complex components.
+3. Write integration tests for critical API endpoints.
+4. Write E2E tests for the primary user workflows (e.g., authentication, checkout, data mutation).
 
-**Specific Implementation:**
-- Aim for high test coverage on critical paths (e.g., authentication, checkout, main data mutations).
-- Setup mock data and test environments.
-- Implement component testing for complex UI elements.
-
-**Verify:**
-- The test suite runs successfully and catches simulated failures.
+Aim for high test coverage on the critical path. Setup mock data and isolated test environments.
 `;
   }
 
@@ -199,147 +191,76 @@ Establish the testing strategy and implement the core test suite.
     return `
 Configure deployment, CI/CD, and monitoring.
 
-**Core Requirements:**
+REQUIREMENTS:
 1. Prepare the application for deployment to ${answers.hosting}.
-2. Write Dockerfiles or deployment configurations as needed.
-3. Setup a CI/CD pipeline (e.g., GitHub Actions) to lint, test, and deploy.
-
-**Specific Implementation:**
-- Configure environment variables and secrets management.
-- Setup basic monitoring and error logging (e.g., Sentry, Datadog, or cloud-native tools).
-- Document deployment instructions in the README.
-
-**Verify:**
-- The build process succeeds without errors.
-- The CI pipeline executes successfully.
+2. Provide Dockerfiles or infrastructure-as-code configurations if applicable.
+3. Setup a CI/CD pipeline configuration (e.g., GitHub Actions) to lint, test, and deploy automatically.
+4. Configure environment variables and secrets management.
+5. Setup basic monitoring and error logging integration.
 `;
   }
+  
+  // Custom stage for Portfolio
+  function stagePortfolioBuild(answers) {
+    const screens = formatScreens(answers.screens);
+    return `Build a complete, polished personal portfolio.
 
-  // Archetype-specific stages
-  function stageShoppingFlow(answers) { return `Implement the e-commerce shopping flow: Cart management, checkout process, and payment gateway integration mock. Ensure robust state management for the cart and clear validation during checkout.`; }
-  function stageVendorPortal(answers) { return `Implement the vendor portal: Dashboard for sellers to manage products, view orders, and track revenue. Include RBAC to separate vendor and admin views.`; }
-  function stageAuthMultiTenant(answers) { return `Implement multi-tenancy: Strategy = ${answers.multiTenancy || 'shared-db'}. Build team creation, user invitation, and role management within a tenant. Ensure all data queries are tenant-scoped.`; }
-  function stageBilling(answers) { return `Implement SaaS billing: Subscription tiers, payment method management, invoice history, and webhooks for subscription state changes.`; }
-  function stageAIPipeline(answers) { return `Implement the AI Pipeline: Integration with the LLM API, prompt management, response streaming handling, and if required, embedding generation and RAG search logic.`; }
-  function stageGameMechanics(answers) { return `Implement Game Mechanics: The core game loop, state management, input handling, basic physics/collision detection, and rendering updates.`; }
-  function stageThreeJSScene(answers) { return `Implement the 3D Scene: Set up the Three.js viewport, camera controls, scene graph, lighting, and basic mesh rendering.`; }
-  function stageModelingTools(answers) { return `Implement Modeling Tools: Raycasting for object selection, transform manipulators (translate, rotate, scale), and undo/redo history for scene changes.`; }
-  function stageDataViz(answers) { return `Implement Data Visualization: Setup robust charting libraries, build reusable chart components, handle dynamic data updates, and implement interactive tooltips and legends.`; }
-  function stageAgentDefs(answers) { return `Implement Agent Definitions: Define agent personas, configure tools/functions they can call, establish the memory store interface, and set up prompt templates.`; }
-  function stageOrchestrator(answers) { return `Implement Agent Orchestrator: Build the routing logic to pass tasks between agents, manage shared state/context, and handle execution logging and error recovery.`; }
-  function stageAPIEndpoints(answers) { return `Implement API Service Endpoints: Define REST or GraphQL schemas, setup routing controllers, implement request validation, and auto-generate Swagger/OpenAPI documentation.`; }
+SCREENS TO SCAFFOLD:
+${screens}
 
-  const BLUEPRINTS = {
-    "web-app": [
-      { stage: stageFoundation, title: "Foundation & Navigation Shell", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & Backend", minScale: 1 },
-      { stage: stageCoreFeatures, title: "Core Features", minScale: 0 },
-      { stage: stagePolish, title: "Polish & Production Readiness", minScale: 0 },
-      { stage: stageSecurity, title: "Security & Auth Hardening", minScale: 3 },
-      { stage: stageTesting, title: "Testing Strategy", minScale: 3 },
-      { stage: stageDeployment, title: "Deployment & Infrastructure", minScale: 2 }
-    ],
-    "e-commerce": [
-      { stage: stageFoundation, title: "Foundation & Navigation Shell", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & Backend", minScale: 1 },
-      { stage: stageShoppingFlow, title: "Shopping Flow & Payments", minScale: 0 },
-      { stage: stageVendorPortal, title: "Vendor Portal & Management", minScale: 2 },
-      { stage: stageCoreFeatures, title: "Search, Reviews & Wishlist", minScale: 0 },
-      { stage: stagePolish, title: "Polish & Production Readiness", minScale: 0 },
-      { stage: stageSecurity, title: "Security & PCI Compliance", minScale: 3 },
-      { stage: stageTesting, title: "Testing Strategy", minScale: 3 },
-      { stage: stageDeployment, title: "Deployment & Infrastructure", minScale: 2 }
-    ],
-    "saas": [
-      { stage: stageFoundation, title: "Foundation & Navigation Shell", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & Backend", minScale: 1 },
-      { stage: stageAuthMultiTenant, title: "Multi-Tenancy & Teams", minScale: 1 },
-      { stage: stageCoreFeatures, title: "Core SaaS Features", minScale: 0 },
-      { stage: stageBilling, title: "Billing & Subscriptions", minScale: 2 },
-      { stage: stagePolish, title: "Polish & Production Readiness", minScale: 0 },
-      { stage: stageSecurity, title: "Security & Compliance", minScale: 3 },
-      { stage: stageTesting, title: "Testing Strategy", minScale: 3 },
-      { stage: stageDeployment, title: "Deployment & Infrastructure", minScale: 2 }
-    ],
-    "ai-ml-app": [
-      { stage: stageFoundation, title: "Foundation & UI Shell", minScale: 0 },
-      { stage: stageAIPipeline, title: "AI Pipeline & Integrations", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & History", minScale: 1 },
-      { stage: stageCoreFeatures, title: "Application Features", minScale: 0 },
-      { stage: stagePolish, title: "Streaming UX & Polish", minScale: 0 },
-      { stage: stageSecurity, title: "API Key Security & Rate Limiting", minScale: 3 },
-      { stage: stageDeployment, title: "Deployment & Infrastructure", minScale: 2 }
-    ],
-    "portfolio": [
-      { stage: stageFoundation, title: "Foundation & Layout", minScale: 0 },
-      { stage: stageCoreFeatures, title: "Content Sections", minScale: 0 },
-      { stage: stagePolish, title: "Animations & Polish", minScale: 0 }
-    ],
-    "dashboard": [
-      { stage: stageFoundation, title: "Dashboard Shell & Nav", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & APIs", minScale: 1 },
-      { stage: stageDataViz, title: "Data Visualization & Grids", minScale: 0 },
-      { stage: stageCoreFeatures, title: "Widgets & Features", minScale: 0 },
-      { stage: stagePolish, title: "Polish & Optimization", minScale: 0 },
-      { stage: stageDeployment, title: "Deployment", minScale: 2 }
-    ],
-    "mobile-app": [
-      { stage: stageFoundation, title: "Mobile Foundation & Routing", minScale: 0 },
-      { stage: stageDataModel, title: "Backend & Sync", minScale: 1 },
-      { stage: stageCoreFeatures, title: "Core Mobile Features", minScale: 0 },
-      { stage: stagePolish, title: "Gestures & Polish", minScale: 0 },
-      { stage: stageSecurity, title: "Security", minScale: 3 },
-      { stage: stageDeployment, title: "App Store Prep", minScale: 2 }
-    ],
-    "game": [
-      { stage: stageFoundation, title: "Engine Setup & Asset Loader", minScale: 0 },
-      { stage: stageGameMechanics, title: "Core Game Mechanics", minScale: 0 },
-      { stage: stageDataModel, title: "Backend & Leaderboards", minScale: 1 },
-      { stage: stagePolish, title: "Juice & Polish", minScale: 0 },
-      { stage: stageDeployment, title: "Deployment", minScale: 2 }
-    ],
-    "3d-cad": [
-      { stage: stageFoundation, title: "UI Shell & Toolbars", minScale: 0 },
-      { stage: stageThreeJSScene, title: "3D Viewport Setup", minScale: 0 },
-      { stage: stageModelingTools, title: "Modeling & Interaction Tools", minScale: 0 },
-      { stage: stageDataModel, title: "Data Serialization & Backend", minScale: 1 },
-      { stage: stagePolish, title: "Performance & Polish", minScale: 0 },
-      { stage: stageDeployment, title: "Deployment", minScale: 2 }
-    ],
-    "cloud-app": [
-      { stage: stageFoundation, title: "Foundation & Routing", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & Control Plane", minScale: 1 },
-      { stage: stageCoreFeatures, title: "Cloud Features", minScale: 0 },
-      { stage: stagePolish, title: "Polish", minScale: 0 },
-      { stage: stageSecurity, title: "Identity & Access Management", minScale: 3 },
-      { stage: stageDeployment, title: "Deployment & IaC", minScale: 2 }
-    ],
-    "enterprise": [
-      { stage: stageFoundation, title: "Foundation & Layout", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & APIs", minScale: 1 },
-      { stage: stageCoreFeatures, title: "Enterprise Workflows", minScale: 0 },
-      { stage: stagePolish, title: "Accessibility & Polish", minScale: 0 },
-      { stage: stageSecurity, title: "Advanced Security & Audit", minScale: 3 },
-      { stage: stageTesting, title: "Testing Strategy", minScale: 3 },
-      { stage: stageDeployment, title: "Infrastructure & CI/CD", minScale: 2 }
-    ],
-    "api-service": [
-      { stage: stageFoundation, title: "Project Setup & Config", minScale: 0 },
-      { stage: stageDataModel, title: "Data Model & ORM", minScale: 1 },
-      { stage: stageAPIEndpoints, title: "Endpoints & Routing", minScale: 0 },
-      { stage: stageSecurity, title: "Auth & Rate Limiting", minScale: 3 },
-      { stage: stageTesting, title: "API Testing", minScale: 3 },
-      { stage: stageDeployment, title: "Deployment", minScale: 2 }
-    ],
-    "agent-swarm": [
-      { stage: stageFoundation, title: "Project Setup & Memory UI", minScale: 0 },
-      { stage: stageDataModel, title: "Vector DB & Storage", minScale: 1 },
-      { stage: stageAgentDefs, title: "Agent Definitions", minScale: 0 },
-      { stage: stageOrchestrator, title: "Orchestrator & Routing", minScale: 0 },
-      { stage: stagePolish, title: "Logging & Observability", minScale: 0 },
-      { stage: stageDeployment, title: "Deployment", minScale: 2 }
-    ]
-  };
+NAVIGATION: Fixed top bar. Mobile: hamburger -> slide-out menu. Active page indicator.
+FOOTER: Centered copyright, social icon row.
+
+DATA: Create realistic portfolio projects with actual descriptions (not lorem ipsum). Include some that have case study depth. Each project needs a distinct cover image placeholder.
+
+Make it feel finished and deployable. Every page must render meaningful content.`;
+  }
+
+  // E-commerce specific
+  function stageShoppingFlow(answers) { return `Implement the complete shopping flow:\n\n1. PRODUCT LISTING: Category filter, price range slider, sort dropdown, pagination, skeleton loading grid.\n2. PRODUCT DETAIL: Image gallery, variant selector, Add to Cart with quantity picker, Wishlist toggle, Reviews section.\n3. CART: Persistent cart, quantity controls, real-time subtotal/tax calculation.\n4. CHECKOUT: Multi-step (Shipping -> Payment -> Confirmation). Form validation before advancing.\n\nEvery interaction MUST have loading states, error handling, and optimistic UI updates.`; }
+  
+  // ----- Stage Resolution Pipeline -----
+
+  function resolveStages(answers) {
+    const scale = answers.scale || "hobby";
+    const scaleIdx = SCALE_INDEX[scale] || 0;
+    const arch = answers.archetype || "web-app";
+    
+    let pipeline = [];
+    
+    if (scaleIdx === 0 && arch === "portfolio") {
+      pipeline.push({ id: "foundation", title: "Complete Portfolio Build", enabled: true, required: true, category: "foundation", builder: stagePortfolioBuild });
+      return pipeline;
+    }
+    
+    if (scaleIdx === 0) {
+      pipeline.push({ id: "foundation", title: "Complete Application Build", enabled: true, required: true, category: "foundation", builder: a => stageFoundation(a) + "\n\n" + stageCoreFeatures(a) });
+      return pipeline;
+    }
+
+    // Standard multi-stage pipeline
+    pipeline.push({ id: "foundation", title: "Foundation & Navigation Shell", enabled: true, required: true, category: "foundation", builder: stageFoundation });
+    pipeline.push({ id: "data-model", title: "Data Model & Backend", enabled: true, required: false, category: "data", builder: stageDataModel });
+    
+    if (arch === "e-commerce") {
+      pipeline.push({ id: "shopping-flow", title: "Shopping Flow & Checkout", enabled: true, required: false, category: "features", builder: stageShoppingFlow });
+    } else {
+      pipeline.push({ id: "features", title: "Core Features & Workflows", enabled: true, required: false, category: "features", builder: stageCoreFeatures });
+    }
+    
+    pipeline.push({ id: "polish", title: "Polish & Production Readiness", enabled: true, required: false, category: "design", builder: stagePolish });
+    
+    if (scaleIdx >= 3) {
+      pipeline.push({ id: "security", title: "Security Hardening", enabled: true, required: false, category: "security", builder: stageSecurity });
+      pipeline.push({ id: "testing", title: "Testing Strategy", enabled: true, required: false, category: "testing", builder: stageTesting });
+    }
+    
+    if (scaleIdx >= 2) {
+      pipeline.push({ id: "deployment", title: "Deployment & CI/CD", enabled: true, required: false, category: "deployment", builder: stageDeployment });
+    }
+    
+    return pipeline;
+  }
 
   function inferDefaults(answers) {
     const arch = answers.archetype || "web-app";
@@ -347,7 +268,6 @@ Configure deployment, CI/CD, and monitoring.
     const scaleIdx = SCALE_INDEX[scale] || 0;
     
     let inferred = { ...answers };
-
     if (!inferred.archetype) inferred.archetype = arch;
     if (!inferred.scale) inferred.scale = scale;
 
@@ -360,19 +280,20 @@ Configure deployment, CI/CD, and monitoring.
     if (!inferred.genre) {
       if (arch === "portfolio") inferred.genre = "minimal";
       else if (arch === "dashboard") inferred.genre = "dashboard";
-      else if (scale === "enterprise" || scale === "production") inferred.genre = "production";
+      else if (scale === "enterprise" || scale === "production" || inferred.productionQuality) inferred.genre = "production";
       else inferred.genre = "minimal";
     }
 
     if (!inferred.authType) {
-      if (scaleIdx === 0) inferred.authType = "none";
-      else if (scaleIdx <= 2) inferred.authType = "basic";
-      else inferred.authType = "oauth";
+      if (scaleIdx === 0) inferred.authType = "None";
+      else if (scaleIdx <= 2) inferred.authType = "Email & Password";
+      else inferred.authType = "OAuth + Email & Password";
     }
     
     if (!inferred.screens || inferred.screens.length === 0) {
-       if (arch === "e-commerce") inferred.screens = ["Home", "Product Listing", "Product Detail", "Cart", "Checkout"];
+       if (arch === "e-commerce") inferred.screens = ["Home", "Product Listing", "Product Detail", "Cart", "Checkout", "User Dashboard", "Vendor Portal"];
        else if (arch === "saas") inferred.screens = ["Landing Page", "Login/Signup", "Dashboard", "Settings", "Billing"];
+       else if (arch === "portfolio") inferred.screens = ["Home", "Project Detail", "About", "Contact"];
        else inferred.screens = ["Home", "Dashboard", "Settings"];
     }
 
@@ -382,7 +303,6 @@ Configure deployment, CI/CD, and monitoring.
   function getVisibleSections(answers) {
     const scale = answers.scale || "hobby";
     const scaleIdx = SCALE_INDEX[scale] || 0;
-    
     return {
       features: true,
       design: true,
@@ -394,59 +314,47 @@ Configure deployment, CI/CD, and monitoring.
   }
 
   function buildPreface(answers) {
-    const genreInfo = GENRES.find(g => g.id === answers.genre);
+    const genreInfo = GENRES[answers.genre];
     const genreDesc = genreInfo ? genreInfo.description : "Standard clean design.";
     
-    let preface = `You are building "${answers.name || 'an application'}" — ${answers.description || 'A software project'}.
-
-Technical Constraints:
-- Architecture: ${answers.archetype}
-- Frontend: ${answers.frontend}
-- Backend: ${answers.backend}
-- Database: ${answers.database}
-- Hosting: ${answers.hosting}
-
-Design Direction:
-- Style: ${genreDesc}`;
-
-    if (answers.mobileFirst) preface += `\n- MUST be Mobile-First design.`;
-    if (answers.darkMode) preface += `\n- MUST implement Dark Mode capability.`;
-    if (answers.productionQuality) preface += `\n- CRITICAL: Ensure production quality (strict accessibility, semantic HTML, scalable components, zero vibe-coding).`;
+    let preface = `You are building "${answers.name || 'an application'}" — ${answers.description || 'A software project'}.\n\n`;
+    
+    preface += `Technical Constraints:\n`;
+    preface += `- Architecture: ${ARCHETYPES[answers.archetype]?.label || answers.archetype}\n`;
+    preface += `- Frontend: ${answers.frontend}\n`;
+    if (answers.backend && answers.backend !== "None") preface += `- Backend: ${answers.backend}\n`;
+    if (answers.database && answers.database !== "None") preface += `- Database: ${answers.database}\n`;
+    preface += `- Hosting: ${answers.hosting}\n`;
+    if (answers.mobileFirst) preface += `- Responsive: Mobile-first design\n`;
+    
+    preface += `\nDesign Direction:\n`;
+    preface += `- Style: ${genreInfo?.label || answers.genre} — ${genreDesc}\n`;
+    if (answers.darkMode) preface += `- Theme: Must support Dark Mode capability\n`;
+    if (answers.productionQuality) preface += `- Quality: Production-grade (strict accessibility, semantic HTML, scalable components, zero vibe-coding)\n`;
 
     return preface;
   }
 
-  function assembleSpec(answers) {
+  function assembleSpec(answers, stageOverrides = {}) {
     const inferred = inferDefaults(answers);
-    const arch = inferred.archetype;
-    const scaleIdx = SCALE_INDEX[inferred.scale] || 0;
-    
-    const blueprint = BLUEPRINTS[arch] || BLUEPRINTS["web-app"];
-    const applicableStages = blueprint.filter(s => scaleIdx >= s.minScale);
-    
+    const stages = resolveStages(inferred);
     const preface = buildPreface(inferred);
-    let raw = "";
     
-    if (inferred.scale === "hobby") {
-      let combinedContent = "";
-      applicableStages.forEach(s => {
-        combinedContent += "\n" + s.stage(inferred).trim() + "\n";
-      });
-      raw = `## Stage 1 — Complete Application Build\n\n${combinedContent.trim()}\n`;
-    } else {
-      applicableStages.forEach((s, i) => {
-        raw += `## Stage ${i + 1} — ${s.title}\n\n`;
-        raw += s.stage(inferred).trim();
-        raw += `\n\n---\n\n`;
-      });
-    }
+    const enabledStages = stages.filter(s => 
+      stageOverrides[s.id] !== undefined ? stageOverrides[s.id] : s.enabled
+    );
+    
+    const raw = enabledStages.map((s, i) => 
+      `## Stage ${i + 1} — ${s.title}\n\n${s.builder(inferred).trim()}`
+    ).join("\n\n---\n\n");
 
-    return {
-      raw: raw.trim(),
-      preface: preface,
-      strategy: "stage",
-      stageCount: inferred.scale === "hobby" ? 1 : applicableStages.length,
-      charCount: raw.length + preface.length
+    return { 
+      raw, 
+      preface, 
+      strategy: "stage", 
+      stageCount: enabledStages.length,
+      charCount: raw.length + preface.length,
+      stages: enabledStages
     };
   }
 
@@ -458,6 +366,7 @@ Design Direction:
     GENRE_DESCRIPTIONS: GENRES,
     FEATURE_SUGGESTIONS,
     DEFAULT_STACKS,
+    resolveStages,
     assembleSpec,
     buildPreface,
     getVisibleSections,

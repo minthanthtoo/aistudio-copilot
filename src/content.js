@@ -1256,7 +1256,7 @@
     const result = Core.parsePromptPack(raw, strategy);
     if (!result.prompts.length) return { ok: false, error: "Nothing to import" };
     const number = state.chains.length + 1;
-    const chain = Core.makeChain(options.name || `Chain ${number}`, result.prompts, raw, { splitStrategy: result.strategy, pastedAt: Core.nowISO(), preface: result.preface });
+    const chain = Core.makeChain(options.name || `Chain ${number}`, result.prompts, raw, { splitStrategy: result.strategy, pastedAt: Core.nowISO(), preface: options.preface || result.preface });
     const placement = options.placement || state.settings.pastePlacement;
     const commandResult = command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${result.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: result.strategy } } });
     if (commandResult.ok) {
@@ -1351,6 +1351,9 @@
     const specApi = globalThis.AISQSpec;
     if (!specApi) return el("div", { text: "AISQSpec not found. Ensure spec.js is loaded." });
 
+    state.ui.specAnswers.featureChips = state.ui.specAnswers.featureChips || [];
+    state.ui.specAnswers.stageOverrides = state.ui.specAnswers.stageOverrides || {};
+
     if (state.ui.specScreen === 0) return renderWizardScreen0(specApi);
     if (state.ui.specScreen === 1) return renderWizardScreen1(specApi);
     if (state.ui.specScreen === 2) return renderWizardScreen2(specApi);
@@ -1363,15 +1366,15 @@
     
     const archetypeGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, 
       Object.entries(specApi.ARCHETYPES).map(([key, info]) => 
-        button(`${info.icon} ${info.label}`, () => { mutate(() => { state.ui.specAnswers.archetype = key; requestRender(); }); }, state.ui.specAnswers.archetype === key ? "primary" : "ghost")
+        button(`${info.emoji} ${info.label}`, () => { mutate(() => { state.ui.specAnswers.archetype = key; requestRender(); }); }, state.ui.specAnswers.archetype === key ? "primary" : "ghost")
       )
     );
 
     const scaleGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" },
-      Object.entries(specApi.SCALES).map(([key, info]) => 
-        el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px;" }, [
-          el("input", { type: "radio", name: "spec-scale", checked: state.ui.specAnswers.scale === key, on: { change: () => { mutate(() => { state.ui.specAnswers.scale = key; requestRender(); }); } } }),
-          el("span", { text: info.label })
+      specApi.SCALES.map(scale => 
+        el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;" }, [
+          el("input", { type: "radio", name: "spec-scale", checked: state.ui.specAnswers.scale === scale, on: { change: () => { mutate(() => { state.ui.specAnswers.scale = scale; requestRender(); }); } } }),
+          el("span", { text: scale.charAt(0).toUpperCase() + scale.slice(1) })
         ])
       )
     );
@@ -1390,23 +1393,29 @@
   }
 
   function renderWizardScreen1(specApi) {
-    const visible = specApi.getVisibleSections(state.ui.specAnswers);
+    const inferred = specApi.inferDefaults(state.ui.specAnswers);
+    const visible = specApi.getVisibleSections(inferred);
     
     // Core Features
     const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: state.ui.specAnswers.features || "", on: { input: e => state.ui.specAnswers.features = e.target.value } });
-    const suggestions = specApi.FEATURE_SUGGESTIONS[state.ui.specAnswers.archetype] || [];
-    const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => 
-      el("button", { text: `+ ${s}`, style: "font-size: 11px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; background: transparent; cursor: pointer;", on: { click: () => {
-        state.ui.specAnswers.features = (state.ui.specAnswers.features ? state.ui.specAnswers.features + "\\n" : "") + s;
-        featureText.value = state.ui.specAnswers.features;
-      }} })
-    ));
+    const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
+    const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
+      const isSelected = state.ui.specAnswers.featureChips.includes(s);
+      return el("button", { text: (isSelected ? "✓ " : "+ ") + s, style: `font-size: 11px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; background: ${isSelected ? '#e0f0ff' : 'transparent'}; cursor: pointer;`, on: { click: () => {
+        if (isSelected) {
+          state.ui.specAnswers.featureChips = state.ui.specAnswers.featureChips.filter(x => x !== s);
+        } else {
+          state.ui.specAnswers.featureChips.push(s);
+        }
+        requestRender();
+      }} });
+    }));
 
     // Design
-    const genreSelect = el("select", { className: "aisq-select" }, [el("option", { value: "", text: "-- Select Genre --" }), ...Object.entries(specApi.GENRES).map(([k, v]) => el("option", { value: k, text: v.label, selected: state.ui.specAnswers.genre === k }))]);
+    const genreSelect = el("select", { className: "aisq-select" }, [el("option", { value: "", text: "-- Select Genre --" }), ...Object.entries(specApi.GENRES).map(([id, info]) => el("option", { value: id, text: info.label, selected: inferred.genre === id }))]);
     genreSelect.addEventListener("change", e => state.ui.specAnswers.genre = e.target.value);
     
-    const mkCheckbox = (label, key) => el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px;" }, [
+    const mkCheckbox = (label, key) => el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;" }, [
       el("input", { type: "checkbox", checked: !!state.ui.specAnswers[key], on: { change: e => state.ui.specAnswers[key] = e.target.checked } }),
       el("span", { text: label })
     ]);
@@ -1415,25 +1424,26 @@
     ]);
 
     // Screens
-    const screensInput = el("input", { className: "aisq-input", value: state.ui.specAnswers.screens || "", placeholder: "Home, Login, Dashboard", on: { input: e => state.ui.specAnswers.screens = e.target.value } });
+    const screensValue = Array.isArray(state.ui.specAnswers.screens) ? state.ui.specAnswers.screens.join(", ") : (state.ui.specAnswers.screens || "");
+    const screensInput = el("input", { className: "aisq-input", value: screensValue, placeholder: "Home, Login, Dashboard", on: { change: e => state.ui.specAnswers.screens = e.target.value.split(",").map(x => x.trim()).filter(Boolean) } });
 
     const fields = [
       field("Core Features", el("div", {}, [featureText, suggestionChips])),
       field("Design", el("div", {}, [genreSelect, designOptions])),
-      field("Screens & Flow", screensInput)
+      field("Screens", screensInput)
     ];
 
     if (visible.techStack) {
       const mkTechSelect = (label, key, options) => {
-        const sel = el("select", { className: "aisq-select" }, [el("option", { value: "", text: `-- Select ${label} --` }), ...options.map(o => el("option", { value: o, text: o, selected: state.ui.specAnswers[key] === o }))]);
+        const sel = el("select", { className: "aisq-select" }, [el("option", { value: "", text: `-- Select ${label} --` }), ...options.map(o => el("option", { value: o, text: o, selected: inferred[key] === o }))]);
         sel.addEventListener("change", e => state.ui.specAnswers[key] = e.target.value);
         return field(label, sel);
       };
       fields.push(el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, [
-        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS"]),
-        mkTechSelect("Backend", "backend", ["Node.js", "Python", "Go", "None/Serverless"]),
-        mkTechSelect("Database", "database", ["PostgreSQL", "MongoDB", "Firebase", "Local Storage"]),
-        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "GitHub Pages"])
+        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS", "Next.js", "Astro", "React Native", "Angular", "None"]),
+        mkTechSelect("Backend", "backend", ["Node.js", "Node.js + Express", "Python", "Python + FastAPI", "Go", "Firebase", "Supabase", "None"]),
+        mkTechSelect("Database", "database", ["PostgreSQL", "MongoDB", "MySQL", "Redis", "Firestore", "None"]),
+        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "Render", "GitHub Pages"])
       ]));
     }
 
@@ -1451,14 +1461,37 @@
   }
 
   function renderWizardScreen2(specApi) {
-    const result = specApi.assembleSpec(state.ui.specAnswers);
+    const inferred = specApi.inferDefaults(state.ui.specAnswers);
+    const stages = specApi.resolveStages(inferred);
+    const overrides = state.ui.specAnswers.stageOverrides;
+    const result = specApi.assembleSpec(state.ui.specAnswers, overrides);
     
-    const summary = el("p", { className: "aisq-copy", text: `${result.stageCount} stages, ${result.charCount} characters` });
+    const summary = el("p", { className: "aisq-copy", text: `${result.stageCount} stages, ~${result.charCount} characters` });
     const prefaceEl = el("pre", { style: "white-space: pre-wrap; font-size: 11px; background: #f0f0f0; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;", text: result.preface });
-    const rawEl = el("pre", { style: "white-space: pre-wrap; font-size: 11px; background: #f0f0f0; padding: 8px; border-radius: 4px; max-height: 200px; overflow-y: auto;", text: result.raw });
+    
+    const stageCards = stages.map((s, i) => {
+      const isEnabled = overrides[s.id] !== undefined ? overrides[s.id] : s.enabled;
+      
+      const toggle = el("input", { type: "checkbox", checked: isEnabled, disabled: s.required });
+      toggle.addEventListener("change", e => {
+        state.ui.specAnswers.stageOverrides[s.id] = e.target.checked;
+        requestRender();
+      });
+      
+      const header = el("summary", { style: "cursor: pointer; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px;" }, [
+        toggle,
+        el("span", { text: `Stage ${i + 1}: ${s.title}` })
+      ]);
+      
+      const previewText = s.builder(inferred).trim().substring(0, 150) + "...";
+      const body = el("div", { style: "padding: 8px; font-size: 11px; background: #f9f9f9; border-top: 1px solid #eee; white-space: pre-wrap;", text: previewText });
+      
+      return el("details", { style: "border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; margin-bottom: 4px;" }, [header, body]);
+    });
 
     const submit = () => {
-      const commandResult = importText(result.raw, result.strategy, { name: state.ui.specAnswers.name || "Generated App", preface: result.preface });
+      const finalResult = specApi.assembleSpec(state.ui.specAnswers, overrides);
+      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
       if (commandResult.ok) {
         mutate(() => { state.ui.specMode = "paste"; state.ui.specScreen = 0; state.ui.specAnswers = {}; });
         requestRender();
@@ -1468,7 +1501,7 @@
     return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
       field("Summary", summary),
       field("Preface", prefaceEl),
-      field("Spec", rawEl),
+      field("Stages", el("div", {}, stageCards)),
       el("div", { className: "aisq-actions" }, [
         button("Back", () => { mutate(() => { state.ui.specScreen = 1; requestRender(); }); }, "ghost"),
         button("Generate & Add to Queue", submit, "primary")
