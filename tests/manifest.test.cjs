@@ -20,10 +20,7 @@ test("manifest is a narrow MV3 extension with core loaded before the content run
   assert.deepEqual(manifest.host_permissions, ["https://aistudio.google.com/*", "https://chatgpt.com/*"]);
   const contentJs = manifest.content_scripts[0].js;
   assert.deepStrictEqual(contentJs, [
-    "src/core.js",
-    "src/spec-engine.js",
-    "src/chatgpt-extractor.js",
-    "src/content.js"
+    "src/core.js", "src/core-parser.js", "src/spec-data.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js", "src/host-bridge.js", "src/runner.js", "src/ui-tabs.js"
   ]);
   assert.equal(manifest.content_scripts[0].run_at, "document_idle");
   assert.deepEqual(Object.keys(manifest.icons), ["16", "32", "48", "128"]);
@@ -86,7 +83,7 @@ test("toolbar action and command message only an active AI Studio Apps tab", asy
   assert.equal(injections.length, 1);
   assert.equal(JSON.stringify(injections[0]), JSON.stringify({
     target: { tabId: 42 },
-    files: ["src/core.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js"]
+    files: ["src/core.js", "src/core-parser.js", "src/spec-data.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js", "src/host-bridge.js", "src/runner.js", "src/ui-tabs.js"]
   }));
   assert.equal(sent.length, 3);
 });

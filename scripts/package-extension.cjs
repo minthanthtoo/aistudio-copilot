@@ -8,10 +8,15 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 const files = [
   "manifest.json",
-  "src/core.js",
+      "src/core.js",
+  "src/core-parser.js",
+  "src/spec-data.js",
   "src/spec-engine.js",
   "src/chatgpt-extractor.js",
   "src/content.js",
+  "src/host-bridge.js",
+  "src/runner.js",
+  "src/ui-tabs.js",
   "src/background.js",
   "assets/icon16.png",
   "assets/icon32.png",

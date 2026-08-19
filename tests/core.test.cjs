@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Core = require("../src/core.js");
+Object.assign(Core, require("../src/core-parser.js"));
 
 test("Stage headings split a prompt pack and preserve the shared preface", () => {
   const input = `Global rules:\n- Keep the current stack.\n\n## Stage 1 — Scaffold\nBuild the shell and navigation with enough implementation detail.\n\n## Stage 2 — Data\nAdd the persistent data layer and validation with enough implementation detail.`;

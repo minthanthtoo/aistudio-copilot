@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Core = require("../src/core.js");
+Object.assign(Core, require("../src/core-parser.js"));
 const AISQSpec = require("../src/spec-engine.js");
 
 test("Spec Engine API available", () => {
@@ -85,6 +86,7 @@ test("assembleSpec output splits correctly via parsePromptPack", () => {
   });
   
   // The integration test!
+  console.log("Core keys: ", Object.keys(Core));
   const parsed = Core.parsePromptPack(result.raw, "stage");
   assert.equal(parsed.prompts.length, result.stageCount);
 });
@@ -259,7 +261,8 @@ test("All archetypes at all scales split correctly", () => {
   for (const s of scales) {
     for (const a of archs) {
       const result = AISQSpec.assembleSpec({scale: s, archetype: a});
-      const parsed = Core.parsePromptPack(result.raw, "stage");
+      console.log("Core keys: ", Object.keys(Core));
+  const parsed = Core.parsePromptPack(result.raw, "stage");
       assert.equal(parsed.prompts.length, result.stageCount, `Failed for ${a} at ${s}`);
     }
   }

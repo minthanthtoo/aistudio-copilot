@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_FILES = ["src/core.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js"];
+const CONTENT_FILES = ["src/core.js","src/core-parser.js","src/spec-data.js","src/spec-engine.js","src/chatgpt-extractor.js","src/content.js","src/host-bridge.js","src/runner.js","src/ui-tabs.js"];
 const LEASE_KEY = "aisqRunnerLease";
 const DEFAULT_LEASE_MS = 20_000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

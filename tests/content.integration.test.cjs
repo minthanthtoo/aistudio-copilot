@@ -6,10 +6,17 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 const Core = require("../src/core.js");
+require("../src/core-parser.js");
 
 const projectRoot = path.resolve(__dirname, "..");
 const coreSource = fs.readFileSync(path.join(projectRoot, "src/core.js"), "utf8");
+const coreParserSource = fs.readFileSync(path.join(projectRoot, "src/core-parser.js"), "utf8");
+const specDataSource = fs.readFileSync(path.join(projectRoot, "src/spec-data.js"), "utf8");
+const specEngineSource = fs.readFileSync(path.join(projectRoot, "src/spec-engine.js"), "utf8");
 const contentSource = fs.readFileSync(path.join(projectRoot, "src/content.js"), "utf8");
+const hostBridgeSource = fs.readFileSync(path.join(projectRoot, "src/host-bridge.js"), "utf8");
+const runnerSource = fs.readFileSync(path.join(projectRoot, "src/runner.js"), "utf8");
+const uiTabsSource = fs.readFileSync(path.join(projectRoot, "src/ui-tabs.js"), "utf8");
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function installVisibleGeometry(window) {
@@ -65,8 +72,14 @@ async function createEnvironment(body, initialState = null, options = {}) {
     }
   };
   options.beforeContent?.(window);
-  window.eval(coreSource);
+window.eval(coreSource);
+  window.eval(coreParserSource);
+  window.eval(specDataSource);
+  window.eval(specEngineSource);
   window.eval(contentSource);
+  window.eval(hostBridgeSource);
+  window.eval(runnerSource);
+  window.eval(uiTabsSource);
   await wait(120);
   return {
     dom,
@@ -93,8 +106,8 @@ function pendingState({ baselineTurnCount = 0, retryCount = 0, settings = {} } =
   const queue = Core.makeQueue("Fixture queue", [prompt], prompt.text);
   queue.id = "queue-1";
   const state = Core.defaultState();
-  state.queues = [queue];
-  state.activeQueueId = queue.id;
+  state.chains = [queue]; state.queues = [queue];
+  state.activeChainId = queue.id; state.activeQueueId = queue.id;
   state.settings = { ...state.settings, settleMs: 30, retryDelayMs: 20, interPromptDelayMs: 20, ...settings };
   state.runner = {
     ...state.runner,
@@ -129,7 +142,10 @@ test("stale-root reinjection stops the prior runtime before remounting", async (
   t.after(() => env.close());
   const firstRuntime = env.window.__AISQ_RUNTIME__;
   env.root().remove();
-  env.window.eval(contentSource);
+env.window.eval(contentSource);
+  env.window.eval(hostBridgeSource);
+  env.window.eval(runnerSource);
+  env.window.eval(uiTabsSource);
   await wait(140);
   assert.equal(env.window.document.querySelectorAll("#aisq-extension-root").length, 1);
   assert.ok(env.window.__AISQ_RUNTIME__);
