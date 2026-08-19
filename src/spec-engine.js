@@ -221,6 +221,32 @@ Make it feel finished and deployable. Every page must render meaningful content.
   
   // ----- Stage Resolution Pipeline -----
 
+
+  function stageADR(answers) {
+    return `
+Produce Architecture Decision Records (ADRs) for this project.
+
+REQUIREMENTS:
+1. Identify 3-5 critical technical decisions (e.g., state management, database selection, auth strategy).
+2. For each, output a formal ADR including:
+   - Context and Problem Statement
+   - Considered Options
+   - Decision Outcome
+   - Consequences (Positive and Negative)
+`;
+  }
+
+  function stageThreatModel(answers) {
+    return `
+Perform a Threat Model analysis and establish security policies.
+
+REQUIREMENTS:
+1. Use STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege).
+2. Identify primary threat actors and attack vectors for this specific architecture.
+3. Define mitigation strategies for the top 5 identified risks.
+4. Output a summary Threat Model document.
+`;
+  }
   function resolveStages(answers) {
     const scale = answers.scale || "hobby";
     const scaleIdx = SCALE_INDEX[scale] || 0;
@@ -250,6 +276,7 @@ Make it feel finished and deployable. Every page must render meaningful content.
     
     pipeline.push({ id: "polish", title: "Polish & Production Readiness", enabled: true, required: false, category: "design", builder: stagePolish });
     
+
     if (scaleIdx >= 3) {
       pipeline.push({ id: "security", title: "Security Hardening", enabled: true, required: false, category: "security", builder: stageSecurity });
       pipeline.push({ id: "testing", title: "Testing Strategy", enabled: true, required: false, category: "testing", builder: stageTesting });
@@ -258,7 +285,11 @@ Make it feel finished and deployable. Every page must render meaningful content.
     if (scaleIdx >= 2) {
       pipeline.push({ id: "deployment", title: "Deployment & CI/CD", enabled: true, required: false, category: "deployment", builder: stageDeployment });
     }
-    
+
+    if (scaleIdx >= 4) {
+      pipeline.push({ id: "adr", title: "Architecture Decision Records (ADR)", enabled: true, required: false, category: "enterprise", builder: stageADR });
+      pipeline.push({ id: "threat-model", title: "Threat Modeling (STRIDE)", enabled: true, required: false, category: "enterprise", builder: stageThreatModel });
+    }
     return pipeline;
   }
 
@@ -317,7 +348,17 @@ Make it feel finished and deployable. Every page must render meaningful content.
     const genreInfo = GENRES[answers.genre];
     const genreDesc = genreInfo ? genreInfo.description : "Standard clean design.";
     
+
     let preface = `You are building "${answers.name || 'an application'}" — ${answers.description || 'A software project'}.\n\n`;
+    
+    if (answers.industry) {
+      preface += `Industry Context: ${answers.industry}\n`;
+      if (/healthcare|medical/i.test(answers.industry)) preface += `- Strict HIPAA compliance required for all PII/PHI data.\n`;
+      if (/finance|banking|fintech/i.test(answers.industry)) preface += `- Strict PCI-DSS compliance and financial data rounding rules apply.\n`;
+      if (/education|school/i.test(answers.industry)) preface += `- FERPA compliance and accessibility (WCAG 2.1 AA) are mandatory.\n`;
+      preface += `\n`;
+    }
+
     
     preface += `Technical Constraints:\n`;
     preface += `- Architecture: ${ARCHETYPES[answers.archetype]?.label || answers.archetype}\n`;
@@ -358,6 +399,184 @@ Make it feel finished and deployable. Every page must render meaningful content.
     };
   }
 
+
+  // ----- Templates -----
+  const BUILT_IN_TEMPLATES = [
+    {
+      id: "saas-dashboard",
+      name: "SaaS Dashboard",
+      icon: "📊",
+      scale: "production",
+      answers: {
+        name: "SaaS Dashboard",
+        description: "B2B SaaS application with multi-tenancy and billing.",
+        archetype: "saas",
+        scale: "production",
+        features: "User authentication, team management, billing/subscriptions, interactive data dashboard with charts, CSV export.",
+        featureChips: ["User Auth", "Team Management", "Dashboard", "Billing Integration"],
+        genre: "dashboard",
+        mobileFirst: true,
+        darkMode: true,
+        productionQuality: true,
+        screens: ["Landing Page", "Login", "Dashboard", "Settings", "Billing", "Team Management"],
+        frontend: "Next.js 14 App Router",
+        backend: "Node.js + NestJS",
+        database: "PostgreSQL (Supabase)",
+        hosting: "Vercel",
+        security: "OAuth, RBAC, Data encryption"
+      }
+    },
+    {
+      id: "portfolio",
+      name: "Portfolio Site",
+      icon: "📁",
+      scale: "hobby",
+      answers: {
+        name: "Personal Portfolio",
+        description: "Minimalist personal portfolio for a designer or developer.",
+        archetype: "portfolio",
+        scale: "hobby",
+        features: "Project gallery with case studies, about me section, contact form, resume download.",
+        featureChips: ["Project Gallery", "About Me", "Contact Form"],
+        genre: "minimal",
+        mobileFirst: true,
+        darkMode: true,
+        screens: ["Home", "Project Detail", "About", "Contact"],
+        frontend: "Astro",
+        backend: "None",
+        database: "None",
+        hosting: "GitHub Pages"
+      }
+    },
+    {
+      id: "mobile-social",
+      name: "Mobile Social App",
+      icon: "📱",
+      scale: "startup",
+      answers: {
+        name: "Social Connect",
+        description: "Mobile-first social networking app with media sharing.",
+        archetype: "mobile-app",
+        scale: "startup",
+        features: "User profiles, photo/video uploads, news feed, infinite scroll, likes and comments, push notifications.",
+        featureChips: ["Bottom Navigation", "Pull to Refresh", "Push Notifications"],
+        genre: "playful",
+        mobileFirst: true,
+        darkMode: true,
+        screens: ["Feed", "Discover", "Create Post", "Notifications", "Profile"],
+        frontend: "React Native",
+        backend: "Firebase",
+        database: "Firestore",
+        hosting: "App Stores",
+        security: "Content moderation, secure media storage"
+      }
+    },
+    {
+      id: "e-commerce",
+      name: "E-Commerce Store",
+      icon: "🛒",
+      scale: "mvp",
+      answers: {
+        name: "Modern Storefront",
+        description: "Direct-to-consumer e-commerce storefront.",
+        archetype: "e-commerce",
+        scale: "mvp",
+        features: "Product catalog with variants, shopping cart, Stripe checkout, order confirmation, basic customer accounts.",
+        featureChips: ["Product Catalog", "Shopping Cart", "Checkout"],
+        genre: "corporate",
+        mobileFirst: true,
+        screens: ["Home", "Category", "Product Detail", "Cart", "Checkout"],
+        frontend: "Next.js 14 App Router",
+        backend: "Next.js API Routes",
+        database: "PostgreSQL",
+        hosting: "Vercel"
+      }
+    },
+    {
+      id: "ai-chat",
+      name: "AI Chat App",
+      icon: "🤖",
+      scale: "mvp",
+      answers: {
+        name: "AI Assistant",
+        description: "Chatbot interface with streaming LLM responses and chat history.",
+        archetype: "ai-ml-app",
+        scale: "mvp",
+        features: "Chat interface, streaming responses, chat history sidebar, prompt library, export to markdown.",
+        featureChips: ["Prompt Input", "Chat History", "Streaming Responses"],
+        genre: "hacker",
+        darkMode: true,
+        screens: ["Chat Interface", "History", "Settings"],
+        frontend: "React",
+        backend: "Python + FastAPI",
+        database: "PostgreSQL (pgvector)",
+        hosting: "Render"
+      }
+    },
+    {
+      id: "game-jam",
+      name: "Game Jam Entry",
+      icon: "🎮",
+      scale: "hobby",
+      answers: {
+        name: "Web Game",
+        description: "Browser-based 2D game with local high scores.",
+        archetype: "game",
+        scale: "hobby",
+        features: "Main menu, core game loop, collision detection, particle effects, local storage high scores.",
+        featureChips: ["Game Loop", "Score Tracking", "Sound Effects"],
+        genre: "brutalist",
+        screens: ["Main Menu", "Game View", "Game Over"],
+        frontend: "Vanilla JS + Canvas API",
+        backend: "None",
+        database: "None",
+        hosting: "Vercel"
+      }
+    },
+    {
+      id: "enterprise-admin",
+      name: "Enterprise Admin",
+      icon: "🏢",
+      scale: "production",
+      answers: {
+        name: "Admin Portal",
+        description: "Internal back-office tool for customer support and operations.",
+        archetype: "enterprise",
+        scale: "production",
+        features: "SSO integration, comprehensive audit logging, complex data grids with export, user impersonation, role-based workflows.",
+        featureChips: ["Single Sign-On (SSO)", "Audit Logs", "Complex Workflows"],
+        genre: "production",
+        productionQuality: true,
+        screens: ["Login", "Dashboard", "User Management", "Audit Logs", "Reports"],
+        frontend: "Angular",
+        backend: "Java Spring Boot",
+        database: "PostgreSQL",
+        hosting: "AWS",
+        security: "SSO (SAML/OIDC), strict RBAC, network isolation"
+      }
+    }
+  ];
+
+  function serializeTemplate(answers) {
+    const clean = {};
+    for (const key in answers) {
+      if (answers[key] !== undefined && answers[key] !== "") {
+        clean[key] = answers[key];
+      }
+    }
+    return JSON.stringify(clean);
+  }
+
+  function deserializeTemplate(jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (typeof parsed !== "object" || !parsed) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
   const api = {
     SCALES,
     SCALE_INDEX,
@@ -370,7 +589,10 @@ Make it feel finished and deployable. Every page must render meaningful content.
     assembleSpec,
     buildPreface,
     getVisibleSections,
-    inferDefaults
+    inferDefaults,
+    BUILT_IN_TEMPLATES,
+    serializeTemplate,
+    deserializeTemplate
   };
 
   global.AISQSpec = api;

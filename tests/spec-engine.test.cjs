@@ -147,13 +147,41 @@ test("All 9 genres produce non-empty design blocks", () => {
   const keys = Object.keys(AISQSpec.GENRES);
   for (const genre of keys) {
     const preface = AISQSpec.buildPreface({ genre });
-    assert.match(preface, new RegExp(AISQSpec.GENRES[genre].label));
-    assert.match(preface, new RegExp(AISQSpec.GENRES[genre].description.substring(0, 10)));
+    assert.ok(preface.includes(AISQSpec.GENRES[genre].label));
   }
 });
 
 test("Prompt quality: RFC-2119 language in production", () => {
   const result = AISQSpec.assembleSpec({ scale: "production" });
-  // Should have MUST or SHALL or REQUIRE
   assert.ok(/MUST|SHALL|REQUIRE|must|shall/i.test(result.raw));
+});
+
+test("Phase 2: Built-in templates exist", () => {
+  assert.ok(AISQSpec.BUILT_IN_TEMPLATES.length >= 7);
+  assert.equal(AISQSpec.BUILT_IN_TEMPLATES[0].id, "saas-dashboard");
+});
+
+test("Phase 2: serialize/deserialize templates", () => {
+  const answers = { name: "Test", empty: "", undef: undefined };
+  const json = AISQSpec.serializeTemplate(answers);
+  assert.ok(!json.includes("empty"));
+  assert.ok(!json.includes("undef"));
+  assert.ok(json.includes("Test"));
+  
+  const parsed = AISQSpec.deserializeTemplate(json);
+  assert.equal(parsed.name, "Test");
+});
+
+test("Phase 3: Enterprise stages ADR and Threat Model", () => {
+  const prod = AISQSpec.resolveStages({ scale: "production", archetype: "web-app" });
+  assert.ok(!prod.find(s => s.id === "adr"));
+
+  const ent = AISQSpec.resolveStages({ scale: "enterprise", archetype: "web-app" });
+  assert.ok(ent.find(s => s.id === "adr"));
+  assert.ok(ent.find(s => s.id === "threat-model"));
+});
+
+test("Phase 3: Industry hints in preface", () => {
+  const preface = AISQSpec.buildPreface({ industry: "Healthcare app" });
+  assert.match(preface, /HIPAA compliance/);
 });

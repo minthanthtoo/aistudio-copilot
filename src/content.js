@@ -1360,10 +1360,123 @@
     return el("div", { text: "Unknown screen" });
   }
 
+
+  async function loadUserTemplates() {
+    return new Promise(resolve => {
+      chrome.storage.local.get("aisqTemplates", (res) => {
+        resolve(res.aisqTemplates || []);
+      });
+    });
+  }
+
+  async function saveUserTemplate(name, answers) {
+    const templates = await loadUserTemplates();
+    templates.push({ id: "custom-" + Date.now(), name, answers, createdAt: Date.now() });
+    return new Promise(resolve => {
+      chrome.storage.local.set({ aisqTemplates: templates }, resolve);
+    });
+  }
+
+  async function deleteUserTemplate(id) {
+    const templates = await loadUserTemplates();
+    const updated = templates.filter(t => t.id !== id);
+    return new Promise(resolve => {
+      chrome.storage.local.set({ aisqTemplates: updated }, resolve);
+    });
+  }
+
   function renderWizardScreen0(specApi) {
     const nameInput = el("input", { className: "aisq-input", value: state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => state.ui.specAnswers.name = e.target.value } });
     const descInput = el("input", { className: "aisq-input", value: state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => state.ui.specAnswers.description = e.target.value } });
     
+    // Quick Starts
+    const quickStartCards = specApi.BUILT_IN_TEMPLATES.map(t => {
+      const card = el("button", { 
+        style: "display: flex; flex-direction: column; align-items: flex-start; padding: 8px; border: 1px solid #ccc; border-radius: 6px; background: #fafafa; min-width: 140px; cursor: pointer; text-align: left;",
+        on: { click: () => {
+          mutate(() => { 
+            state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
+            state.ui.specScreen = 2; // Jump to preview
+          });
+          requestRender();
+        }}
+      }, [
+        el("div", { style: "font-size: 20px; margin-bottom: 4px;", text: t.icon }),
+        el("div", { style: "font-weight: 500; font-size: 13px;", text: t.name }),
+        el("div", { style: "font-size: 11px; color: #666; margin-top: 2px;", text: t.scale })
+      ]);
+      return card;
+    });
+    
+    const quickStartRow = el("div", { style: "display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px;" }, quickStartCards);
+    
+    // My Templates
+    const myTemplatesContainer = el("div", { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 8px;" });
+    
+    const renderMyTemplates = async () => {
+      const templates = await loadUserTemplates();
+      myTemplatesContainer.innerHTML = "";
+      
+      if (templates.length === 0) {
+        myTemplatesContainer.appendChild(el("div", { style: "font-size: 12px; color: #888; font-style: italic;", text: "No saved templates yet." }));
+        return;
+      }
+      
+      templates.forEach(t => {
+        const row = el("div", { style: "display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: #fff; border: 1px solid #ddd; border-radius: 4px;" }, [
+          el("span", { style: "font-size: 13px; font-weight: 500;", text: t.name }),
+          el("div", { style: "display: flex; gap: 4px;" }, [
+            button("Use", () => {
+              mutate(() => { 
+                state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
+                state.ui.specScreen = 2;
+              });
+              requestRender();
+            }, "ghost"),
+            button("Export", () => {
+              const json = specApi.serializeTemplate(t.answers);
+              const blob = new Blob([json], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${t.name.replace(/\s+/g, '-').toLowerCase()}-template.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }, "ghost"),
+            button("×", async () => {
+              await deleteUserTemplate(t.id);
+              renderMyTemplates();
+            }, "ghost", { style: "color: red;" })
+          ])
+        ]);
+        myTemplatesContainer.appendChild(row);
+      });
+    };
+    renderMyTemplates();
+
+    // Import
+    const importContainer = el("div", { style: "margin-top: 8px; padding: 8px; background: #f0f0f0; border-radius: 4px;" }, [
+      el("div", { style: "font-size: 12px; font-weight: 500; margin-bottom: 4px;", text: "Import Template (JSON)" }),
+      el("input", { type: "file", accept: ".json", style: "font-size: 11px;", on: { change: e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const parsed = specApi.deserializeTemplate(event.target.result);
+          if (parsed) {
+            mutate(() => { 
+              state.ui.specAnswers = parsed;
+              state.ui.specScreen = 2;
+            });
+            requestRender();
+          } else {
+            alert("Invalid template JSON file.");
+          }
+        };
+        reader.readAsText(file);
+      }}})
+    ]);
+
     const archetypeGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, 
       Object.entries(specApi.ARCHETYPES).map(([key, info]) => 
         button(`${info.emoji} ${info.label}`, () => { mutate(() => { state.ui.specAnswers.archetype = key; requestRender(); }); }, state.ui.specAnswers.archetype === key ? "primary" : "ghost")
@@ -1384,10 +1497,16 @@
     }, "primary");
 
     return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
+      field("Quick Starts", quickStartRow),
       field("Name", nameInput),
       field("Description", descInput),
       field("App Type", archetypeGrid),
       field("Scale", scaleGrid),
+      el("details", { style: "font-size: 13px;" }, [
+        el("summary", { style: "cursor: pointer; font-weight: 500;", text: "My Saved Templates" }),
+        myTemplatesContainer,
+        importContainer
+      ]),
       el("div", { className: "aisq-actions" }, [nextBtn])
     ]);
   }
@@ -1419,7 +1538,7 @@
       el("input", { type: "checkbox", checked: !!state.ui.specAnswers[key], on: { change: e => state.ui.specAnswers[key] = e.target.checked } }),
       el("span", { text: label })
     ]);
-    const designOptions = el("div", { style: "display: flex; gap: 12px; margin-top: 8px;" }, [
+    const designOptions = el("div", { style: "display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px;" }, [
       mkCheckbox("Mobile First", "mobileFirst"), mkCheckbox("Dark Mode", "darkMode"), mkCheckbox("Prod Quality", "productionQuality")
     ]);
 
@@ -1440,10 +1559,10 @@
         return field(label, sel);
       };
       fields.push(el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, [
-        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS", "Next.js", "Astro", "React Native", "Angular", "None"]),
-        mkTechSelect("Backend", "backend", ["Node.js", "Node.js + Express", "Python", "Python + FastAPI", "Go", "Firebase", "Supabase", "None"]),
-        mkTechSelect("Database", "database", ["PostgreSQL", "MongoDB", "MySQL", "Redis", "Firestore", "None"]),
-        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "Render", "GitHub Pages"])
+        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS", "Next.js 14 App Router", "Next.js", "Astro", "React Native", "Angular", "None"]),
+        mkTechSelect("Backend", "backend", ["Node.js", "Node.js + Express", "Python", "Python + FastAPI", "Go", "Firebase", "Supabase", "Next.js API Routes", "Node.js + NestJS", "Java Spring Boot", "None"]),
+        mkTechSelect("Database", "database", ["PostgreSQL", "PostgreSQL (Supabase)", "PostgreSQL (pgvector)", "MongoDB", "MySQL", "Redis", "Firestore", "None"]),
+        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "Render", "App Stores", "GitHub Pages"])
       ]));
     }
 
@@ -1497,18 +1616,26 @@
         requestRender();
       }
     };
+    
+    const saveBtn = button("Save as Template", async () => {
+      const name = prompt("Template name:");
+      if (name) {
+        await saveUserTemplate(name, state.ui.specAnswers);
+        alert("Template saved!");
+      }
+    }, "ghost");
 
     return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
       field("Summary", summary),
       field("Preface", prefaceEl),
       field("Stages", el("div", {}, stageCards)),
+      el("div", { style: "display: flex; justify-content: flex-end;" }, [saveBtn]),
       el("div", { className: "aisq-actions" }, [
         button("Back", () => { mutate(() => { state.ui.specScreen = 1; requestRender(); }); }, "ghost"),
-        button("Generate & Add to Queue", submit, "primary")
+        button("Add to Queue", submit, "primary")
       ])
     ]);
   }
-
   function chainCard(chain, index) {
     const counts = Core.chainCounts(chain);
     let status = counts.pending ? "running" : counts.queued === 0 ? "done" : "queued";
