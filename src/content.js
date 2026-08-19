@@ -1443,10 +1443,14 @@
               a.click();
               URL.revokeObjectURL(url);
             }, "ghost"),
-            button("×", async () => {
-              await deleteUserTemplate(t.id);
-              renderMyTemplates();
-            }, "ghost", { style: "color: red;" })
+            (() => {
+              const b = button("×", async () => {
+                await deleteUserTemplate(t.id);
+                renderMyTemplates();
+              }, "ghost", "Delete template");
+              b.style.color = "red";
+              return b;
+            })()
           ])
         ]);
         myTemplatesContainer.appendChild(row);
@@ -1564,6 +1568,12 @@
         mkTechSelect("Database", "database", ["PostgreSQL", "PostgreSQL (Supabase)", "PostgreSQL (pgvector)", "MongoDB", "MySQL", "Redis", "Firestore", "None"]),
         mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "Render", "App Stores", "GitHub Pages"])
       ]));
+      fields.push(field("Industry (optional)", el("input", {
+        className: "aisq-input",
+        value: state.ui.specAnswers.industry || "",
+        placeholder: "e.g. Healthcare, Fintech, Education",
+        on: { input: e => state.ui.specAnswers.industry = e.target.value }
+      })));
     }
 
     if (visible.security) {
@@ -1584,6 +1594,8 @@
     const stages = specApi.resolveStages(inferred);
     const overrides = state.ui.specAnswers.stageOverrides;
     const result = specApi.assembleSpec(state.ui.specAnswers, overrides);
+    
+    if (state.ui.specRawView === undefined) state.ui.specRawView = false;
     
     const summary = el("p", { className: "aisq-copy", text: `${result.stageCount} stages, ~${result.charCount} characters` });
     const prefaceEl = el("pre", { style: "white-space: pre-wrap; font-size: 11px; background: #f0f0f0; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;", text: result.preface });
@@ -1608,6 +1620,22 @@
       return el("details", { style: "border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; margin-bottom: 4px;" }, [header, body]);
     });
 
+    const rawToggle = el("label", { style: "display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-bottom:8px;" }, [
+      el("input", { type: "checkbox", checked: state.ui.specRawView, on: { change: e => {
+        state.ui.specRawView = e.target.checked;
+        requestRender();
+      }}}),
+      el("span", { text: "View Raw Text" })
+    ]);
+
+    const stagesOrRaw = state.ui.specRawView
+      ? el("div", {}, [
+          rawToggle,
+          button("Copy to Clipboard", () => navigator.clipboard.writeText(result.preface + "\n\n" + result.raw), "ghost"),
+          el("pre", { style: "white-space:pre-wrap;font-size:11px;background:#f0f0f0;padding:8px;border-radius:4px;max-height:300px;overflow-y:auto;margin-top:8px;", text: result.preface + "\n\n" + result.raw })
+        ])
+      : el("div", {}, [rawToggle, ...stageCards]);
+
     const submit = () => {
       const finalResult = specApi.assembleSpec(state.ui.specAnswers, overrides);
       const commandResult = importText(finalResult.raw, finalResult.strategy, { name: state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
@@ -1617,22 +1645,50 @@
       }
     };
     
+    const submitAndStart = () => {
+      const finalResult = specApi.assembleSpec(state.ui.specAnswers, overrides);
+      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
+      if (commandResult.ok) {
+        mutate(() => { 
+          state.ui.specMode = "paste"; 
+          state.ui.specScreen = 0; 
+          state.ui.specAnswers = {}; 
+          state.settings.activeTab = "prompts";
+          state.runner.enabled = true;
+        });
+        requestRender();
+      }
+    };
+
+    let saveMode = false;
+    const saveNameInput = el("input", { className: "aisq-input", placeholder: "Template name...", style: "display:none;width:140px;" });
     const saveBtn = button("Save as Template", async () => {
-      const name = prompt("Template name:");
-      if (name) {
-        await saveUserTemplate(name, state.ui.specAnswers);
-        alert("Template saved!");
+      if (!saveMode) {
+        saveMode = true;
+        saveNameInput.style.display = "";
+        saveNameInput.focus();
+      } else {
+        const name = saveNameInput.value.trim();
+        if (name) {
+          await saveUserTemplate(name, state.ui.specAnswers);
+          saveNameInput.value = "";
+          saveNameInput.style.display = "none";
+          saveMode = false;
+          saveBtn.textContent = "✓ Saved!";
+          setTimeout(() => { saveBtn.textContent = "Save as Template"; }, 2000);
+        }
       }
     }, "ghost");
 
     return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
       field("Summary", summary),
       field("Preface", prefaceEl),
-      field("Stages", el("div", {}, stageCards)),
-      el("div", { style: "display: flex; justify-content: flex-end;" }, [saveBtn]),
+      field("Stages", stagesOrRaw),
+      el("div", { style: "display: flex; justify-content: flex-end; align-items: center; gap: 8px;" }, [saveNameInput, saveBtn]),
       el("div", { className: "aisq-actions" }, [
         button("Back", () => { mutate(() => { state.ui.specScreen = 1; requestRender(); }); }, "ghost"),
-        button("Add to Queue", submit, "primary")
+        button("Add to Queue", submit, "ghost"),
+        button("Generate & Start ▶", submitAndStart, "primary")
       ])
     ]);
   }

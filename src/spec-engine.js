@@ -114,12 +114,15 @@ Create API clients or typed query hooks for the frontend to consume these servic
 
   function stageCoreFeatures(answers) {
     const featureText = answers.features || "Implement the primary application functionality.";
-    const chips = answers.featureChips && answers.featureChips.length ? "\nKey Modules: " + answers.featureChips.join(", ") : "";
+    const uniqueChips = (answers.featureChips || []).filter(c => !featureText.toLowerCase().includes(c.toLowerCase()));
+    const chips = uniqueChips.length ? "\nAdditional Modules: " + uniqueChips.join(", ") : "";
+    const screenList = answers.screens && answers.screens.length ? "\n\nSCREENS IN SCOPE:\n" + (Array.isArray(answers.screens) ? answers.screens.map((s,i) => (i+1)+". "+s).join("\n") : answers.screens) : "";
+    
     return `
 Implement the complete end-to-end user workflows for the core features.
 
 FEATURES:
-${featureText}${chips}
+${featureText}${chips}${screenList}
 
 IMPLEMENTATION DETAILS:
 - Each workflow MUST include its relevant UI components and connect to the backend services.
@@ -132,27 +135,15 @@ IMPLEMENTATION DETAILS:
   }
 
   function stagePolish(answers) {
-    const prodStr = answers.productionQuality ? 
-      "\n2. ACCESSIBILITY:\n   - All interactive elements keyboard-navigable with visible focus rings.\n   - ARIA labels on icon-only buttons.\n   - Color contrast ratio >= 4.5:1 on all text.\n   - Screen reader announcements for state changes." : "";
-    
-    return `
-Apply polish and prepare the application for a high-quality user experience.
-
-1. RESPONSIVE AUDIT:
-   - Test and fix every page at 375px (mobile), 768px (tablet), and 1280px (desktop).
-   - Mobile: Ensure all tap targets are >= 44px, no horizontal scroll, bottom nav functional.
-   - Tablet/Desktop: Ensure grids and flex layouts utilize available space optimally.${prodStr}
-
-3. LOADING & ERROR STATES:
-   - Skeleton loaders for data-heavy components.
-   - Error boundaries with "Something went wrong" + retry button at the page level.
-   - Global toast notification system (success/error/info).
-
-4. PERFORMANCE & SEO:
-   - Lazy load images below the fold.
-   - Debounce rapid inputs (like search).
-   - Dynamic page titles and meta descriptions.
-`;
+    const sections = [
+      `1. RESPONSIVE AUDIT:\n   - Test and fix every page at 375px (mobile), 768px (tablet), and 1280px (desktop).\n   - Mobile: Ensure all tap targets are >= 44px, no horizontal scroll, bottom nav functional.\n   - Tablet/Desktop: Ensure grids and flex layouts utilize available space optimally.`
+    ];
+    if (answers.productionQuality) {
+      sections.push(`2. ACCESSIBILITY:\n   - All interactive elements keyboard-navigable with visible focus rings.\n   - ARIA labels on icon-only buttons.\n   - Color contrast ratio >= 4.5:1 on all text.\n   - Screen reader announcements for state changes.`);
+    }
+    sections.push(`${sections.length + 1}. LOADING & ERROR STATES:\n   - Skeleton loaders for data-heavy components.\n   - Error boundaries with "Something went wrong" + retry button at the page level.\n   - Global toast notification system (success/error/info).`);
+    sections.push(`${sections.length + 1}. PERFORMANCE & SEO:\n   - Lazy load images below the fold.\n   - Debounce rapid inputs (like search).\n   - Dynamic page titles and meta descriptions.`);
+    return `\nApply polish and prepare the application for a high-quality user experience.\n\n${sections.join('\n\n')}\n`;
   }
 
   function stageSecurity(answers) {
@@ -217,8 +208,117 @@ Make it feel finished and deployable. Every page must render meaningful content.
   }
 
   // E-commerce specific
-  function stageShoppingFlow(answers) { return `Implement the complete shopping flow:\n\n1. PRODUCT LISTING: Category filter, price range slider, sort dropdown, pagination, skeleton loading grid.\n2. PRODUCT DETAIL: Image gallery, variant selector, Add to Cart with quantity picker, Wishlist toggle, Reviews section.\n3. CART: Persistent cart, quantity controls, real-time subtotal/tax calculation.\n4. CHECKOUT: Multi-step (Shipping -> Payment -> Confirmation). Form validation before advancing.\n\nEvery interaction MUST have loading states, error handling, and optimistic UI updates.`; }
+  function stageShoppingFlow(answers) {
+    return `
+Implement the complete end-to-end shopping experience.
+
+1. PRODUCT LISTING
+   - Category filter sidebar with checkboxes and item counts
+   - Price range slider (min/max with debounced URL query params)
+   - Sort dropdown: Price ↑, Price ↓, Newest, Best Rated
+   - Paginated grid with skeleton loading placeholders
+
+2. PRODUCT DETAIL
+   - Image gallery: main image + thumbnail strip, click to switch
+   - Variant/size selector if applicable
+   - "Add to Cart" with quantity picker and animated cart badge feedback
+   - "♡ Wishlist" toggle with optimistic UI
+   - Reviews section: star distribution bar, paginated list, "Write a Review" form
+
+3. CART
+   - Persistent: logged-in uses DB, guests use localStorage (merge on login)
+   - Quantity +/- with max=inventory validation
+   - "Remove" with 5-second undo toast
+   - Live subtotal + estimated tax + shipping calculation
+
+4. CHECKOUT (multi-step with progress indicator)
+   - Step 1 Shipping: address form with validation, or select saved address
+   - Step 2 Payment: Stripe Elements card input (test mode), order summary sidebar
+   - Step 3 Confirmation: success animation, order number, "Continue Shopping" CTA
+   - Cannot advance without completing validation
+
+Every interaction MUST have: loading spinner, error toast, empty state with CTA.
+`;
+  }
   
+  
+
+  function stageGameLoop(answers) {
+    return `
+Core Game Loop with requestAnimationFrame/fixed timestep.
+Input handling (keyboard, mouse/touch, gamepad).
+Game state machine: MENU -> PLAYING -> PAUSED -> GAME_OVER.
+Collision detection system.
+Score tracking with localStorage high-score persistence.
+Particle/effect system for visual feedback.
+Sound manager (Web Audio API) for SFX and background music.
+Progressive difficulty scaling.
+`;
+  }
+
+  function stageAPIDesign(answers) {
+    return `
+RESTful or GraphQL API design with versioned endpoints.
+OpenAPI/Swagger auto-generated documentation.
+Request validation middleware (Zod/Joi schemas).
+Rate limiting (token bucket, per-key quotas).
+API key generation, rotation, and revocation.
+Webhook delivery system with retry and signature verification.
+Health check and readiness probe endpoints.
+Structured JSON error responses with error codes.
+`;
+  }
+
+  function stageAgentOrchestration(answers) {
+    return `
+Agent definition schema (name, system prompt, tools, model).
+Tool registry with typed input/output schemas.
+Task orchestration: sequential, parallel, and conditional routing.
+Shared memory store (short-term context + long-term vector DB).
+Human-in-the-loop approval gates.
+Execution trace logging with token/cost tracking.
+Graceful error handling: retry, fallback agent, escalate to human.
+`;
+  }
+
+  function stageDashboardWidgets(answers) {
+    return `
+KPI summary cards (value, trend arrow, sparkline).
+Interactive charts: line, bar, pie, heatmap (use a charting library).
+Data grid with server-side sort, filter, pagination, CSV export.
+Date range picker filtering all widgets simultaneously.
+Customizable layout: drag-to-reorder widget grid.
+Real-time update mechanism (polling or WebSocket).
+Dark mode toggle that persists across sessions.
+`;
+  }
+
+  function stageAIIntegration(answers) {
+    return `
+LLM integration with streaming token-by-token responses.
+Chat interface: message list, input bar, "Stop" button during streaming.
+Conversation history sidebar with search and delete.
+System prompt configuration panel.
+File/image upload for multimodal input.
+Response export to Markdown/PDF.
+Token usage display and cost estimation per conversation.
+Feedback mechanism (thumbs up/down) per response.
+`;
+  }
+
+  function stageMobilePatterns(answers) {
+    return `
+Bottom tab navigation with badge indicators.
+Pull-to-refresh on all list screens.
+Swipe-to-dismiss / swipe-to-reveal-actions on list items.
+Push notification registration and deep linking.
+Offline-first with local cache and sync-on-reconnect.
+Biometric authentication (FaceID/Fingerprint) for sensitive actions.
+Haptic feedback on key interactions.
+Adaptive layouts for phone vs tablet.
+`;
+  }
+
   // ----- Stage Resolution Pipeline -----
 
 
@@ -266,16 +366,29 @@ REQUIREMENTS:
 
     // Standard multi-stage pipeline
     pipeline.push({ id: "foundation", title: "Foundation & Navigation Shell", enabled: true, required: true, category: "foundation", builder: stageFoundation });
-    pipeline.push({ id: "data-model", title: "Data Model & Backend", enabled: true, required: false, category: "data", builder: stageDataModel });
     
-    if (arch === "e-commerce") {
-      pipeline.push({ id: "shopping-flow", title: "Shopping Flow & Checkout", enabled: true, required: false, category: "features", builder: stageShoppingFlow });
+    if (answers.backend && answers.backend !== "None" && answers.database && answers.database !== "None") {
+      pipeline.push({ id: "data-model", title: "Data Model & Backend", enabled: true, required: false, category: "data", builder: stageDataModel });
+    }
+    
+    const featureBuilders = {
+      "e-commerce": { id: "shopping-flow", title: "Shopping Flow & Checkout", builder: stageShoppingFlow },
+      "game":       { id: "game-loop", title: "Game Loop & Mechanics", builder: stageGameLoop },
+      "api-service":{ id: "api-design", title: "API Design & Documentation", builder: stageAPIDesign },
+      "agent-swarm":{ id: "orchestration", title: "Agent Orchestration & Tools", builder: stageAgentOrchestration },
+      "dashboard":  { id: "widgets", title: "Dashboard Widgets & Data Viz", builder: stageDashboardWidgets },
+      "ai-ml-app":  { id: "ai-integration", title: "AI/LLM Integration & Chat", builder: stageAIIntegration },
+      "mobile-app": { id: "mobile-patterns", title: "Mobile UX Patterns", builder: stageMobilePatterns },
+    };
+
+    const custom = featureBuilders[arch];
+    if (custom) {
+      pipeline.push({ id: custom.id, title: custom.title, enabled: true, required: false, category: "features", builder: custom.builder });
     } else {
       pipeline.push({ id: "features", title: "Core Features & Workflows", enabled: true, required: false, category: "features", builder: stageCoreFeatures });
     }
     
     pipeline.push({ id: "polish", title: "Polish & Production Readiness", enabled: true, required: false, category: "design", builder: stagePolish });
-    
 
     if (scaleIdx >= 3) {
       pipeline.push({ id: "security", title: "Security Hardening", enabled: true, required: false, category: "security", builder: stageSecurity });
@@ -567,11 +680,22 @@ REQUIREMENTS:
     return JSON.stringify(clean);
   }
 
+  const VALID_TEMPLATE_KEYS = new Set([
+    "name", "description", "archetype", "scale", "features", "featureChips",
+    "genre", "mobileFirst", "darkMode", "productionQuality", "screens",
+    "frontend", "backend", "database", "hosting", "security", "industry",
+    "authType", "flowDescription", "stageOverrides"
+  ]);
+
   function deserializeTemplate(jsonStr) {
     try {
       const parsed = JSON.parse(jsonStr);
-      if (typeof parsed !== "object" || !parsed) return null;
-      return parsed;
+      if (typeof parsed !== "object" || !parsed || Array.isArray(parsed)) return null;
+      const clean = {};
+      for (const key of Object.keys(parsed)) {
+        if (VALID_TEMPLATE_KEYS.has(key)) clean[key] = parsed[key];
+      }
+      return Object.keys(clean).length > 0 ? clean : null;
     } catch (e) {
       return null;
     }

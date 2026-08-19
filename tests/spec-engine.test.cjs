@@ -185,3 +185,87 @@ test("Phase 3: Industry hints in preface", () => {
   const preface = AISQSpec.buildPreface({ industry: "Healthcare app" });
   assert.match(preface, /HIPAA compliance/);
 });
+
+test("stagePolish numbering is sequential", () => {
+  const S = AISQSpec;
+  const noProd = S.assembleSpec({scale: "mvp", archetype: "web-app"}, {polish: true});
+  const polishNoProd = noProd.raw.split('---').find(s => s.includes('Apply polish'));
+  assert.match(polishNoProd, /1\. RESPONSIVE AUDIT/);
+  assert.match(polishNoProd, /2\. LOADING & ERROR STATES/);
+  assert.match(polishNoProd, /3\. PERFORMANCE & SEO/);
+  assert.doesNotMatch(polishNoProd, /4\./);
+
+  const prod = S.assembleSpec({scale: "production", archetype: "web-app", productionQuality: true}, {polish: true});
+  const polishProd = prod.raw.split('---').find(s => s.includes('Apply polish'));
+  assert.match(polishProd, /1\. RESPONSIVE AUDIT/);
+  assert.match(polishProd, /2\. ACCESSIBILITY/);
+  assert.match(polishProd, /3\. LOADING & ERROR STATES/);
+  assert.match(polishProd, /4\. PERFORMANCE & SEO/);
+});
+
+test("Game archetype gets stageGameLoop", () => {
+  const stages = AISQSpec.resolveStages({archetype: "game", scale: "mvp"});
+  assert.ok(stages.find(s => s.id === "game-loop"));
+  assert.ok(!stages.find(s => s.id === "features"));
+});
+
+test("API archetype gets stageAPIDesign", () => {
+  const stages = AISQSpec.resolveStages({archetype: "api-service", scale: "mvp"});
+  assert.ok(stages.find(s => s.id === "api-design"));
+  assert.ok(!stages.find(s => s.id === "features"));
+});
+
+test("Agent Swarm gets stageAgentOrchestration", () => {
+  const stages = AISQSpec.resolveStages({archetype: "agent-swarm", scale: "mvp"});
+  assert.ok(stages.find(s => s.id === "orchestration"));
+});
+
+test("Backend=None skips Data Model", () => {
+  const stages = AISQSpec.resolveStages({archetype: "portfolio", scale: "mvp", backend: "None", database: "None"});
+  assert.ok(!stages.find(s => s.id === "data-model"));
+});
+
+test("Feature chips deduplicated with textarea", () => {
+  const result = AISQSpec.assembleSpec({
+    archetype: "web-app", 
+    scale: "mvp", 
+    features: "Implement User Auth and Search", 
+    featureChips: ["User Auth", "Notifications"]
+  });
+  const feats = result.raw.split('---').find(s => s.includes('Core Features'));
+  assert.match(feats, /Additional Modules: Notifications/);
+  assert.doesNotMatch(feats, /Additional Modules:.*User Auth/);
+});
+
+test("Industry field produces HIPAA hint", () => {
+  const preface = AISQSpec.buildPreface({ industry: "Healthcare app" });
+  assert.match(preface, /HIPAA compliance/);
+});
+
+test("deserializeTemplate rejects prototype pollution", () => {
+  const bad = '{"__proto__":{"x":1},"name":"ok"}';
+  const res = AISQSpec.deserializeTemplate(bad);
+  assert.equal(res.name, "ok");
+  assert.equal(res.__proto__ && res.__proto__.x, undefined); 
+});
+
+test("deserializeTemplate rejects arrays", () => {
+  assert.equal(AISQSpec.deserializeTemplate('[1,2,3]'), null);
+});
+
+test("All archetypes at all scales split correctly", () => {
+  const scales = AISQSpec.SCALES;
+  const archs = Object.keys(AISQSpec.ARCHETYPES);
+  for (const s of scales) {
+    for (const a of archs) {
+      const result = AISQSpec.assembleSpec({scale: s, archetype: a});
+      const parsed = Core.parsePromptPack(result.raw, "stage");
+      assert.equal(parsed.prompts.length, result.stageCount, `Failed for ${a} at ${s}`);
+    }
+  }
+});
+
+test("Enterprise scale produces 7+ stages", () => {
+  const stages = AISQSpec.resolveStages({scale: "enterprise", archetype: "web-app"});
+  assert.ok(stages.length >= 7);
+});
