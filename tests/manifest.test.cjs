@@ -18,7 +18,7 @@ test("manifest is a narrow MV3 extension with core loaded before the content run
   assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.deepEqual(manifest.permissions, ["storage", "scripting"]);
   assert.deepEqual(manifest.host_permissions, ["https://aistudio.google.com/*"]);
-  assert.deepEqual(manifest.content_scripts[0].js, ["src/core.js", "src/content.js"]);
+  assert.deepEqual(manifest.content_scripts[0].js, ["src/core.js", "src/spec-engine.js", "src/content.js"]);
   assert.equal(manifest.content_scripts[0].run_at, "document_idle");
   assert.deepEqual(Object.keys(manifest.icons), ["16", "32", "48", "128"]);
   for (const file of [manifest.background.service_worker, ...manifest.content_scripts[0].js, ...Object.values(manifest.icons), ...Object.values(manifest.action.default_icon)]) {
@@ -80,7 +80,7 @@ test("toolbar action and command message only an active AI Studio Apps tab", asy
   assert.equal(injections.length, 1);
   assert.equal(JSON.stringify(injections[0]), JSON.stringify({
     target: { tabId: 42 },
-    files: ["src/core.js", "src/content.js"]
+    files: ["src/core.js", "src/spec-engine.js", "src/content.js"]
   }));
   assert.equal(sent.length, 3);
 });

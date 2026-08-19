@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_FILES = ["src/core.js", "src/content.js"];
+const CONTENT_FILES = ["src/core.js", "src/spec-engine.js", "src/content.js"];
 const LEASE_KEY = "aisqRunnerLease";
 const DEFAULT_LEASE_MS = 20_000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -95,7 +95,7 @@ if (chrome.runtime?.onInstalled?.addListener) {
         for (const tab of tabs) {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ["src/core.js", "src/content.js"]
+            files: ["src/core.js", "src/spec-engine.js", "src/content.js"]
           }).catch(() => {});
         }
       });

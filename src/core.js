@@ -236,7 +236,7 @@
       selectedChainId: null,
       runner: defaultRunner(),
       settings: defaultSettings(),
-      ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null },
+      ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, specMode: "paste", specScreen: 0, specAnswers: {} },
       history: [],
       // Compatibility aliases. syncLegacyAliases keeps these references aligned.
       queues: [],

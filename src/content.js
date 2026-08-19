@@ -1277,6 +1277,26 @@
   }
 
   function renderBuild() {
+    state.ui.specMode = state.ui.specMode || "paste";
+    state.ui.specScreen = state.ui.specScreen || 0;
+    state.ui.specAnswers = state.ui.specAnswers || {};
+
+    const modeToggle = el("div", { className: "aisq-mode-toggle", style: "display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; gap: 8px;" }, [
+      button("Paste", () => mutate(() => { state.ui.specMode = "paste"; requestRender(); }), state.ui.specMode === "paste" ? "primary" : "ghost"),
+      button("✨ Generate", () => mutate(() => { state.ui.specMode = "generate"; requestRender(); }), state.ui.specMode === "generate" ? "primary" : "ghost")
+    ]);
+
+    let content;
+    if (state.ui.specMode === "paste") {
+      content = renderPasteMode();
+    } else {
+      content = renderWizardMode();
+    }
+
+    return el("div", { className: "aisq-section" }, [modeToggle, content]);
+  }
+
+  function renderPasteMode() {
     const draft = el("textarea", {
       className: "aisq-draft",
       value: state.ui.draft,
@@ -1317,13 +1337,142 @@
       const result = importText(state.ui.draft, state.ui.splitStrategy);
       if (result.ok) void startRunner();
     };
-    return el("div", { className: "aisq-section" }, [
+    return el("div", {}, [
       el("p", { className: "aisq-copy", text: "Paste a sequence of prompts. Click 'Add chain' to append it to the execution stack." }),
       field("Split strategy", strategy),
       field("Paste intake", draft),
       meter,
       stackMeter,
       el("div", { className: "aisq-actions" }, [button("Add chain", add, "primary"), button("Add & start", addRun, "ghost")])
+    ]);
+  }
+
+  function renderWizardMode() {
+    const specApi = globalThis.AISQSpec;
+    if (!specApi) return el("div", { text: "AISQSpec not found. Ensure spec.js is loaded." });
+
+    if (state.ui.specScreen === 0) return renderWizardScreen0(specApi);
+    if (state.ui.specScreen === 1) return renderWizardScreen1(specApi);
+    if (state.ui.specScreen === 2) return renderWizardScreen2(specApi);
+    return el("div", { text: "Unknown screen" });
+  }
+
+  function renderWizardScreen0(specApi) {
+    const nameInput = el("input", { className: "aisq-input", value: state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => state.ui.specAnswers.name = e.target.value } });
+    const descInput = el("input", { className: "aisq-input", value: state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => state.ui.specAnswers.description = e.target.value } });
+    
+    const archetypeGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, 
+      Object.entries(specApi.ARCHETYPES).map(([key, info]) => 
+        button(`${info.icon} ${info.label}`, () => { mutate(() => { state.ui.specAnswers.archetype = key; requestRender(); }); }, state.ui.specAnswers.archetype === key ? "primary" : "ghost")
+      )
+    );
+
+    const scaleGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" },
+      Object.entries(specApi.SCALES).map(([key, info]) => 
+        el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px;" }, [
+          el("input", { type: "radio", name: "spec-scale", checked: state.ui.specAnswers.scale === key, on: { change: () => { mutate(() => { state.ui.specAnswers.scale = key; requestRender(); }); } } }),
+          el("span", { text: info.label })
+        ])
+      )
+    );
+
+    const nextBtn = button("Next", () => {
+      mutate(() => { state.ui.specScreen = 1; requestRender(); });
+    }, "primary");
+
+    return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
+      field("Name", nameInput),
+      field("Description", descInput),
+      field("App Type", archetypeGrid),
+      field("Scale", scaleGrid),
+      el("div", { className: "aisq-actions" }, [nextBtn])
+    ]);
+  }
+
+  function renderWizardScreen1(specApi) {
+    const visible = specApi.getVisibleSections(state.ui.specAnswers);
+    
+    // Core Features
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: state.ui.specAnswers.features || "", on: { input: e => state.ui.specAnswers.features = e.target.value } });
+    const suggestions = specApi.FEATURE_SUGGESTIONS[state.ui.specAnswers.archetype] || [];
+    const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => 
+      el("button", { text: `+ ${s}`, style: "font-size: 11px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; background: transparent; cursor: pointer;", on: { click: () => {
+        state.ui.specAnswers.features = (state.ui.specAnswers.features ? state.ui.specAnswers.features + "\\n" : "") + s;
+        featureText.value = state.ui.specAnswers.features;
+      }} })
+    ));
+
+    // Design
+    const genreSelect = el("select", { className: "aisq-select" }, [el("option", { value: "", text: "-- Select Genre --" }), ...Object.entries(specApi.GENRES).map(([k, v]) => el("option", { value: k, text: v.label, selected: state.ui.specAnswers.genre === k }))]);
+    genreSelect.addEventListener("change", e => state.ui.specAnswers.genre = e.target.value);
+    
+    const mkCheckbox = (label, key) => el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px;" }, [
+      el("input", { type: "checkbox", checked: !!state.ui.specAnswers[key], on: { change: e => state.ui.specAnswers[key] = e.target.checked } }),
+      el("span", { text: label })
+    ]);
+    const designOptions = el("div", { style: "display: flex; gap: 12px; margin-top: 8px;" }, [
+      mkCheckbox("Mobile First", "mobileFirst"), mkCheckbox("Dark Mode", "darkMode"), mkCheckbox("Prod Quality", "productionQuality")
+    ]);
+
+    // Screens
+    const screensInput = el("input", { className: "aisq-input", value: state.ui.specAnswers.screens || "", placeholder: "Home, Login, Dashboard", on: { input: e => state.ui.specAnswers.screens = e.target.value } });
+
+    const fields = [
+      field("Core Features", el("div", {}, [featureText, suggestionChips])),
+      field("Design", el("div", {}, [genreSelect, designOptions])),
+      field("Screens & Flow", screensInput)
+    ];
+
+    if (visible.techStack) {
+      const mkTechSelect = (label, key, options) => {
+        const sel = el("select", { className: "aisq-select" }, [el("option", { value: "", text: `-- Select ${label} --` }), ...options.map(o => el("option", { value: o, text: o, selected: state.ui.specAnswers[key] === o }))]);
+        sel.addEventListener("change", e => state.ui.specAnswers[key] = e.target.value);
+        return field(label, sel);
+      };
+      fields.push(el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, [
+        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS"]),
+        mkTechSelect("Backend", "backend", ["Node.js", "Python", "Go", "None/Serverless"]),
+        mkTechSelect("Database", "database", ["PostgreSQL", "MongoDB", "Firebase", "Local Storage"]),
+        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "GitHub Pages"])
+      ]));
+    }
+
+    if (visible.security) {
+      fields.push(field("Security Needs", el("input", { className: "aisq-input", value: state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption", on: { input: e => state.ui.specAnswers.security = e.target.value } })));
+    }
+
+    return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
+      ...fields,
+      el("div", { className: "aisq-actions" }, [
+        button("Back", () => { mutate(() => { state.ui.specScreen = 0; requestRender(); }); }, "ghost"),
+        button("Preview", () => { mutate(() => { state.ui.specScreen = 2; requestRender(); }); }, "primary")
+      ])
+    ]);
+  }
+
+  function renderWizardScreen2(specApi) {
+    const result = specApi.assembleSpec(state.ui.specAnswers);
+    
+    const summary = el("p", { className: "aisq-copy", text: `${result.stageCount} stages, ${result.charCount} characters` });
+    const prefaceEl = el("pre", { style: "white-space: pre-wrap; font-size: 11px; background: #f0f0f0; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;", text: result.preface });
+    const rawEl = el("pre", { style: "white-space: pre-wrap; font-size: 11px; background: #f0f0f0; padding: 8px; border-radius: 4px; max-height: 200px; overflow-y: auto;", text: result.raw });
+
+    const submit = () => {
+      const commandResult = importText(result.raw, result.strategy, { name: state.ui.specAnswers.name || "Generated App", preface: result.preface });
+      if (commandResult.ok) {
+        mutate(() => { state.ui.specMode = "paste"; state.ui.specScreen = 0; state.ui.specAnswers = {}; });
+        requestRender();
+      }
+    };
+
+    return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
+      field("Summary", summary),
+      field("Preface", prefaceEl),
+      field("Spec", rawEl),
+      el("div", { className: "aisq-actions" }, [
+        button("Back", () => { mutate(() => { state.ui.specScreen = 1; requestRender(); }); }, "ghost"),
+        button("Generate & Add to Queue", submit, "primary")
+      ])
     ]);
   }
 
