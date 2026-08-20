@@ -370,6 +370,7 @@
         get() {
           const key = getCurrentPageKey();
           if (!this.projects[key]) this.projects[key] = defaultProject();
+          if (this.projects[key][prop] === undefined) this.projects[key][prop] = defaultProject()[prop];
           return this.projects[key][prop];
         },
         set(val) {
