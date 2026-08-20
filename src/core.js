@@ -20,7 +20,86 @@
   });
   const PROMPT_STATUSES = Object.freeze(["queued", "pending", "complete", "error", "skipped"]);
 
+  const EVENTS = Object.freeze({
+    // Execution lifecycle
+    TRANSITION:            'TRANSITION',
+    SUBMISSION_PREPARED:   'SUBMISSION_PREPARED',
+    SUBMISSION_COMMITTED:  'SUBMISSION_COMMITTED',
+    TURN_STARTED:          'TURN_STARTED',
+    TURN_COMPLETED:        'TURN_COMPLETED',
+    TURN_FAILED:           'TURN_FAILED',
+    TURN_UNCERTAIN:        'TURN_UNCERTAIN',
+    TURN_TIMED_OUT:        'TURN_TIMED_OUT',
+    // Harness control
+    RUNNER_STARTED:        'RUNNER_STARTED',
+    RUNNER_PAUSED:         'RUNNER_PAUSED',
+    RUNNER_RESUMED:        'RUNNER_RESUMED',
+    RUNNER_FINISHED:       'RUNNER_FINISHED',
+    LEASE_ACQUIRED:        'LEASE_ACQUIRED',
+    LEASE_LOST:            'LEASE_LOST',
+    // Recovery & repair
+    RETRY_SCHEDULED:       'RETRY_SCHEDULED',
+    RETRY_EXECUTED:        'RETRY_EXECUTED',
+    CIRCUIT_BROKEN:        'CIRCUIT_BROKEN',
+    REHYDRATED:            'REHYDRATED',
+    // Dynamic chains
+    PLAN_RECEIVED:         'PLAN_RECEIVED',
+    CHAIN_INJECTED:        'CHAIN_INJECTED',
+    REPAIR_INJECTED:       'REPAIR_INJECTED',
+    // User commands
+    CHAIN_IMPORTED:        'CHAIN_IMPORTED',
+    CHAIN_DELETED:         'CHAIN_DELETED',
+    PROMPT_EDITED:         'PROMPT_EDITED',
+    PROMPT_SKIPPED:        'PROMPT_SKIPPED',
+    ACTION:                'ACTION',
+    VERIFY:                'VERIFY',
+    ERROR:                 'ERROR',
+    SYSTEM:                'SYSTEM'
+  });
+
   const nowISO = () => new Date().toISOString();
+
+  function truncatePayload(payload) {
+    const clone = { ...payload };
+    if (clone.errorSnippet && clone.errorSnippet.length > 500)
+      clone.errorSnippet = clone.errorSnippet.slice(-500);
+    if (clone.message && clone.message.length > 300)
+      clone.message = clone.message.slice(0, 300) + '…';
+    for (const key of Object.keys(clone)) {
+      if (clone[key] instanceof Node) delete clone[key];
+    }
+    return clone;
+  }
+
+  function commitTransition(state, event, payload = {}) {
+    if (!EVENTS[event]) throw new Error(`Unknown event: ${event}`);
+    
+    // Apply state updates from payload
+    if (payload.phase && state.runner) {
+      state.runner.phase = payload.phase;
+    }
+    if (payload.error !== undefined && state.runner) {
+      state.runner.lastError = payload.error;
+    }
+
+    const entry = {
+      event,
+      payload: truncatePayload(payload),
+      at: nowISO(),
+      rev: (state.revision || 0) + 1,
+    };
+    if (!state.eventLog) state.eventLog = [];
+    state.eventLog.push(entry);
+    if (state.eventLog.length > 500) state.eventLog = state.eventLog.slice(-400);
+    state.revision = entry.rev;
+    state.updatedAt = nowISO();
+    if (state.runner) {
+      state.runner.revision = (state.runner.revision || 0) + 1;
+      state.runner.updatedAt = state.updatedAt;
+    }
+    return entry;
+  }
+
   const uid = (prefix = "id") => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
   const normalizeText = (value) => String(value || "").replace(/\r\n?/g, "\n").trim();
 
@@ -144,6 +223,7 @@
       settings: defaultSettings(),
       ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, specMode: "paste", specScreen: 0, specAnswers: {} },
       history: [],
+      eventLog: [],
       // Compatibility aliases. syncLegacyAliases keeps these references aligned.
       queues: [],
       activeQueueId: null
@@ -243,7 +323,8 @@
       runner,
       settings: { ...base.settings, ...(raw.settings || {}) },
       ui: { ...base.ui, ...(raw.ui || {}) },
-      history: Array.isArray(raw.history) ? raw.history.slice(-300) : []
+      history: Array.isArray(raw.history) ? raw.history.slice(-300) : [],
+      eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-400) : []
     };
     ensureStackOrder(state);
     if (!state.selectedChainId || !state.chains.some((chain) => chain.id === state.selectedChainId)) state.selectedChainId = state.stackOrder[0] || null;
@@ -756,6 +837,8 @@
     SCHEMA_VERSION,
     PHASES,
     PROMPT_STATUSES,
+    EVENTS,
+    commitTransition,
     nowISO,
     uid,
     normalizeText,

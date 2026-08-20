@@ -79,7 +79,7 @@
       ctx.leaseToken = null;
       ctx.runnerOwnedByOtherTab = true;
       ctx.state.runner.enabled = false;
-      ctx.state.runner.phase = PHASES.PAUSED;
+      Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
       ctx.state.runner.ownerTabId = response?.ownerTabId !== undefined && response?.ownerTabId !== null ? String(response.ownerTabId) : null;
       ctx.state.runner.leaseUpdatedAt = null;
       ctx.state.runner.lastError = "Runner lease was lost to another AI Studio tab; execution paused before the next action";
@@ -114,7 +114,7 @@
       prompt.status = "error";
       prompt.error = message;
     }
-    ctx.state.runner.phase = PHASES.PAUSED;
+    Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
     ctx.state.runner.enabled = false;
     ctx.state.runner.lastError = message;
     ctx.state.runner.nextTarget = null;
@@ -126,7 +126,7 @@
   }
 
   function finishRun(message = "Stack completed") {
-    ctx.state.runner.phase = PHASES.DONE;
+    Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.DONE });
     ctx.state.runner.enabled = false;
     ctx.state.runner.pendingPromptId = null;
     ctx.state.runner.nextTarget = null;
@@ -174,7 +174,7 @@
     prompt.attempts = Number(prompt.attempts || 0) + 1;
     prompt.submittedAt = Core.nowISO();
     prompt.error = null;
-    ctx.state.runner.phase = PHASES.SUBMITTING;
+    Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.SUBMITTING });
     ctx.state.runner.baselineTurnCount = host.turnCount;
     ctx.state.runner.submittedAt = Date.now();
     ctx.state.runner.clickedAt = null;
@@ -220,7 +220,7 @@
     const intendedPromptId = prompt.id;
     ctx.state.runner.clickedAt = Date.now();
     ctx.state.runner.submittedAt = Date.now();
-    ctx.state.runner.phase = PHASES.AWAITING;
+    Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.AWAITING });
     ctx.state.runner.lastHostState = "Submission committed; waiting for a new assistant turn";
     ctx.addHistory("submission_committed", `Committed ${prompt.label} before host click`, { chainId: ctx.state.runner.activeChainId, promptId: prompt.id, mode: host.mode });
     ctx.touchState();
@@ -253,12 +253,12 @@
     const chain = ctx.runnerChain();
     switch (decision.action) {
       case "mark_running":
-        ctx.state.runner.phase = PHASES.RUNNING;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.RUNNING });
         ctx.state.runner.sawBusy = true;
         ctx.state.runner.lastHostState = host.lastHeader || "AI Studio is running";
         break;
       case "begin_settle":
-        ctx.state.runner.phase = PHASES.SETTLING;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.SETTLING });
         ctx.state.runner.settleUntil = Date.now() + ctx.state.settings.settleMs;
         ctx.state.runner.lastHostState = host.lastHeader || "Completed; verifying stable ctx.state";
         break;
@@ -277,17 +277,17 @@
         if (!target) {
           finishRun();
         } else if (ctx.state.settings.stopAfterChain && !sameChain) {
-          ctx.state.runner.phase = PHASES.PAUSED;
+          Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
           ctx.state.runner.enabled = false;
           ctx.state.runner.lastHostState = "Chain complete; stopped before the next chain";
           ctx.state.runner.ownerTabId = null;
           releaseRunnerLease();
           ctx.addHistory("chain_pause", `Stopped after ${chain.name}`);
         } else if (ctx.state.settings.autoRun) {
-          ctx.state.runner.phase = PHASES.PACING;
+          Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PACING });
           ctx.state.runner.nextActionAt = Date.now() + (sameChain ? ctx.state.settings.interPromptDelayMs : ctx.state.settings.interChainDelayMs);
         } else {
-          ctx.state.runner.phase = PHASES.PAUSED;
+          Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
           ctx.state.runner.enabled = false;
           ctx.state.runner.nextActionAt = null;
           ctx.state.runner.lastHostState = "Prompt complete; manual Resume is enabled";
@@ -297,7 +297,7 @@
         break;
       }
       case "schedule_retry":
-        ctx.state.runner.phase = PHASES.RETRY_WAIT;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.RETRY_WAIT });
         ctx.state.runner.retryCount = Number(ctx.state.runner.retryCount || 0) + 1;
         ctx.state.runner.nextActionAt = Date.now() + ctx.state.settings.retryDelayMs;
         ctx.state.runner.lastError = host.errorText || host.lastHeader || "AI Studio failed";
@@ -309,7 +309,7 @@
         ctx.state.runner.baselineTurnCount = host.turnCount;
         ctx.state.runner.submittedAt = Date.now();
         ctx.state.runner.sawBusy = false;
-        ctx.state.runner.phase = PHASES.AWAITING;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.AWAITING });
         if (prompt) prompt.attempts = Number(prompt.attempts || 0) + 1;
         ctx.touchState();
         if (!await ctx.saveNow() || ctx.state.runner.pendingPromptId !== prompt?.id || !ctx.state.runner.enabled) break;
@@ -327,11 +327,11 @@
           ctx.state.runner.nextTarget = target ? { chainId: target.chain.id, promptId: target.prompt.id } : null;
           if (!target) finishRun("Stack completed after skipping a failed prompt");
           else if (ctx.state.settings.autoRun) {
-            ctx.state.runner.phase = PHASES.PACING;
+            Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PACING });
             ctx.state.runner.nextActionAt = Date.now() + ctx.state.settings.interPromptDelayMs;
           } else {
             ctx.state.runner.enabled = false;
-            ctx.state.runner.phase = PHASES.PAUSED;
+            Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
             ctx.state.runner.ownerTabId = null;
             releaseRunnerLease();
           }
@@ -343,11 +343,11 @@
           ctx.state.runner.nextTarget = target ? { chainId: target.chain.id, promptId: target.prompt.id } : null;
           if (!target) finishRun("Stack completed after skipping a failed chain");
           else if (ctx.state.settings.autoRun) {
-            ctx.state.runner.phase = PHASES.PACING;
+            Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PACING });
             ctx.state.runner.nextActionAt = Date.now() + ctx.state.settings.interChainDelayMs;
           } else {
             ctx.state.runner.enabled = false;
-            ctx.state.runner.phase = PHASES.PAUSED;
+            Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
             ctx.state.runner.ownerTabId = null;
             releaseRunnerLease();
           }
@@ -361,7 +361,7 @@
         markPromptError(decision.message || "AI Studio run failed");
         break;
       case "pacing_complete":
-        ctx.state.runner.phase = ctx.state.settings.autoRun ? PHASES.READY : PHASES.PAUSED;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: ctx.state.settings.autoRun ? PHASES.READY : PHASES.PAUSED });
         ctx.state.runner.enabled = !!ctx.state.settings.autoRun;
         ctx.state.runner.nextActionAt = null;
         break;
@@ -473,7 +473,7 @@
           ctx.scheduleSave();
         } else if (!ctx.pageMatchesBinding()) {
           ctx.state.runner.enabled = false;
-          ctx.state.runner.phase = PHASES.PAUSED;
+          Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
           ctx.state.runner.ownerTabId = null;
           ctx.state.runner.leaseUpdatedAt = null;
           ctx.state.runner.lastError = `Pending work is bound to ${ctx.state.runner.boundPageKey}; open that AI Studio app before resuming`;
@@ -548,7 +548,7 @@
       ctx.state.runner.scope = scope;
       ctx.state.runner.scopeChainId = scope === "selected" ? ctx.state.selectedChainId : null;
       ctx.state.runner.enabled = true;
-      ctx.state.runner.phase = ctx.state.runner.pendingPromptId ? PHASES.READY : PHASES.READY;
+      Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: ctx.state.runner.pendingPromptId ? PHASES.READY : PHASES.READY });
       ctx.state.runner.sawBusy = false;
       ctx.state.runner.submittedAt = null;
       ctx.state.runner.lastError = null;
@@ -567,7 +567,7 @@
     if (!retainPendingLease) releaseRunnerLease();
     ctx.mutate(() => {
       ctx.state.runner.enabled = false;
-      ctx.state.runner.phase = PHASES.PAUSED;
+      Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
       ctx.state.runner.ownerTabId = retainPendingLease ? (ctx.state.runner.ownerTabId || ctx.tabId) : null;
       ctx.state.runner.leaseUpdatedAt = retainPendingLease ? Core.nowISO() : null;
       ctx.addHistory("runner_paused", "Paused runner");
@@ -596,11 +596,11 @@
       if (ctx.state.runner.pendingPromptId) {
         const host = ctx.scanHost();
         ctx.state.runner.baselineTurnCount = Math.min(ctx.state.runner.baselineTurnCount, host.turnCount);
-        ctx.state.runner.phase = host.retryVisible ? PHASES.RETRY_WAIT : PHASES.AWAITING;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: host.retryVisible ? PHASES.RETRY_WAIT : PHASES.AWAITING });
         ctx.state.runner.nextActionAt = host.retryVisible ? Date.now() : null;
         // Reset the submission clock so timeouts don't immediately fire based on original submit time
         ctx.state.runner.submittedAt = Date.now();
-      } else ctx.state.runner.phase = PHASES.READY;
+      } else Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.READY });
       ctx.state.runner.lastError = null;
       ctx.addHistory("runner_resumed", "Runner resumed");
     void tick();    });
@@ -627,7 +627,7 @@
       ctx.state.runner.enabled = true;
       ctx.state.runner.ownerTabId = ctx.tabId;
       ctx.state.runner.leaseUpdatedAt = Core.nowISO();
-      ctx.state.runner.phase = host.retryVisible ? PHASES.RETRY_WAIT : PHASES.AWAITING;
+      Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: host.retryVisible ? PHASES.RETRY_WAIT : PHASES.AWAITING });
       ctx.state.runner.nextActionAt = host.retryVisible ? Date.now() : null;
       // Reset the submission clock so timeouts don't fire based on original submit time
       ctx.state.runner.submittedAt = Date.now();
