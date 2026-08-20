@@ -179,10 +179,19 @@
     function renderSmartInput() {
     let currentDetectType = "empty";
     
+    let placeholderText = "Paste prompts, ChatGPT share URL, JSON template, or app description...";
+    const strategy = ctx.state.ui.splitStrategy || "auto";
+    if (strategy === "stage") placeholderText = "[Stage 1]\nFirst prompt...\n\n[Stage 2]\nSecond prompt...";
+    else if (strategy === "id") placeholderText = "P001: First prompt...\nP002: Second prompt...";
+    else if (strategy === "prompt") placeholderText = "Prompt 1:\nFirst prompt...\n\nPrompt 2:\nSecond prompt...";
+    else if (strategy === "delimiter") placeholderText = "First prompt...\n---\nSecond prompt...\n***\nThird prompt...";
+    else if (strategy === "numbered") placeholderText = "1. First prompt...\n2. Second prompt...";
+    else if (strategy === "single") placeholderText = "Everything pasted here will become one single giant prompt.";
+
     const draft = el("textarea", {
       className: "aisq-draft",
       value: ctx.state.ui.draft,
-      placeholder: "Paste prompts, ChatGPT share URL, JSON template, or app description...",
+      placeholder: placeholderText,
       on: {
         input: (e) => {
           ctx.state.ui.draft = e.target.value;
@@ -209,7 +218,20 @@
     });
 
     const badgeContainer = el("div", { style: "position: absolute; right: 12px; bottom: 12px; pointer-events: none;" });
-    const inputWrapper = el("div", { style: "position: relative; width: 100%;" }, [draft, badgeContainer]);
+    
+    const strategySelect = el("select", { className: "aisq-select", style: "position: absolute; top: 12px; right: 12px; width: auto; max-width: 140px; padding: 2px 20px 2px 6px; font-size: 11px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #cfcbd9; cursor: pointer;", title: "Raw Text Splitter format" });
+    const strats = [["auto", "Auto-detect"], ["stage", "Phase headings"], ["id", "P001 IDs"], ["prompt", "Prompt headings"], ["delimiter", "Delimiters"], ["numbered", "Numbered blocks"], ["single", "Single prompt"]];
+    for (const [value, label] of strats) {
+      const option = el("option", { value, text: label });
+      if (value === (ctx.state.ui.splitStrategy || "auto")) option.selected = true;
+      strategySelect.append(option);
+    }
+    strategySelect.addEventListener("change", () => {
+      ctx.mutate(() => { ctx.state.ui.splitStrategy = strategySelect.value; });
+      ctx.requestRender();
+    });
+
+    const inputWrapper = el("div", { style: "position: relative; width: 100%;" }, [draft, badgeContainer, strategySelect]);
     
     const actionArea = el("div", { className: "aisq-actions", style: "margin-top: 8px; min-height: 32px;" });
     const templatesArea = el("div", { style: "width: 100%; margin-top: 12px; display: none;" });
@@ -228,9 +250,13 @@
       } else if (val.startsWith("{") && val.endsWith("}")) {
         try { JSON.parse(val); detectType = "json"; } catch(e) { detectType = "natural"; }
       } else {
-        parsedPrompts = Core.parsePromptPack(val, ctx.state.ui.splitStrategy || "auto");
-        if (parsedPrompts.prompts.length > 1) detectType = "prompts";
-        else detectType = "natural";
+        const strategy = ctx.state.ui.splitStrategy || "auto";
+        parsedPrompts = Core.parsePromptPack(val, strategy);
+        if (parsedPrompts.prompts.length > 1 || strategy !== "auto") {
+          detectType = "prompts";
+        } else {
+          detectType = "natural";
+        }
       }
       
       currentDetectType = detectType;
@@ -386,25 +412,6 @@
 
     if (ctx.state.ui.showAdvanced) {
       details.open = true;
-
-      // 1. Parser Settings
-      const strategySelect = el("select", { className: "aisq-select" });
-      const strats = [["auto", "Auto-detect"], ["stage", "Stage / Phase headings"], ["id", "P001 / R001 IDs"], ["prompt", "Prompt headings"], ["delimiter", "Delimiters"], ["numbered", "Numbered blocks"], ["single", "Single prompt"]];
-      for (const [value, label] of strats) {
-        const option = el("option", { value, text: label });
-        if (value === (ctx.state.ui.splitStrategy || "auto")) option.selected = true;
-        strategySelect.append(option);
-      }
-      strategySelect.addEventListener("change", () => {
-        ctx.mutate(() => { ctx.state.ui.splitStrategy = strategySelect.value; });
-        ctx.requestRender();
-      });
-      
-      const parserSection = el("div", { className: "aisq-field", style: "margin-bottom: 24px; padding: 12px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px;" }, [
-        el("strong", { text: "Raw Text Splitter", style: "font-size: 12px; color: #f5f4fa; margin-bottom: 2px;" }),
-        el("div", { style: "font-size: 11px; color: #a9a6b4; margin-bottom: 8px; line-height: 1.3;", text: "How should pasted text be divided into separate prompts? Override the auto-detection." }),
-        field("Split Strategy", strategySelect)
-      ]);
 
       // 2. Template Manager
       const myTemplatesContainer = el("div", { className: "aisq-field", style: "padding: 12px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px;" });
