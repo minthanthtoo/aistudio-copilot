@@ -471,6 +471,17 @@
     if (ctx.tickBusy) return;
     ctx.tickBusy = true;
     try {
+      if (ctx.state.uiIntent) {
+        const intent = ctx.state.uiIntent;
+        ctx.mutate(() => { ctx.state.uiIntent = null; });
+        if (intent.action === 'start') await startRunner(intent.scope);
+        else if (intent.action === 'resume') await resumeRunner();
+        else if (intent.action === 'pause') pauseRunner();
+        else if (intent.action === 'recover') await recoverPendingHere();
+        else if (intent.action === 'skip') skipPrompt();
+        ctx.requestRender();
+      }
+
       const host = ctx.scanHost();
       const signature = [host.mode, host.submitReady, host.turnCount, host.lastHeader, host.retryVisible, host.blocked].join("|");
       if (signature !== ctx.lastHostSignature) {
