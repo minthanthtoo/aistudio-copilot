@@ -560,10 +560,10 @@ function renderWizardDetails() {
       el("div", { style: "font-size: 11px; color: #9995a5;" }, [document.createTextNode(stackSummary)])
     ]);
 
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); } } });
-    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); } } });
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); }, change: e => { setTimeout(() => ctx.requestRender(), 150); } } });
+    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); }, change: e => { setTimeout(() => ctx.requestRender(), 150); } } });
     
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); } } });
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); }, change: e => { setTimeout(() => ctx.requestRender(), 150); } } });
     const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
     const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
       const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
@@ -589,9 +589,13 @@ function renderWizardDetails() {
         placeholder: `Select or type...`,
         value: inferred[key] && inferred[key] !== "None" ? inferred[key] : "" 
       });
-      input.addEventListener("change", e => {
+      input.addEventListener("input", e => {
         ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "None" });
         ctx.requestRender();
+      });
+      input.addEventListener("change", e => {
+        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "None" });
+        setTimeout(() => ctx.requestRender(), 150);
       });
       return field(label, el("div", { style: "position: relative;" }, [input, dl]));
     };
