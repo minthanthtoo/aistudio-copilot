@@ -546,7 +546,7 @@ function renderWizardDetails() {
     const parsed = Core.parsePromptPack(result.raw, result.strategy);
     const promptCount = parsed.prompts.length;
 
-    const stackSummary = [inferred.frontend, inferred.backend, inferred.database].filter(x => x && x !== "None").join(" + ") || "No stack specified";
+    const stackSummary = [inferred.frontend, inferred.backend, inferred.database].filter(x => x && x !== "None" && x !== "__custom__").join(" + ") || "No stack specified";
     
     const previewCard = el("div", { style: "background: rgba(115,87,255,0.1); border: 1px solid rgba(115,87,255,0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px;" }, [
       el("div", { style: "display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;" }, [
@@ -580,24 +580,42 @@ function renderWizardDetails() {
     }));
 
     const mkTechSelect = (label, key, options) => {
-      const listId = `aisq-list-${key}`;
-      const dl = el("datalist", { id: listId }, options.map(o => el("option", { value: o })));
-      const input = el("input", { 
+      const val = inferred[key] || "";
+      const isCustom = val === "__custom__" || (val !== "" && val !== "None" && !options.includes(val));
+      const displayVal = val === "__custom__" ? "" : val;
+      
+      const sel = el("select", { className: "aisq-select", style: "width: 100%;" }, [
+        el("option", { value: "", text: `-- Select ${label} --` }),
+        ...options.map(o => el("option", { value: o, text: o, selected: val === o })),
+        el("option", { value: "__custom__", text: "Other (Type...)", selected: isCustom })
+      ]);
+      
+      const customInput = el("input", { 
         className: "aisq-input", 
         type: "text", 
-        list: listId, 
-        placeholder: `Select or type...`,
-        value: inferred[key] && inferred[key] !== "None" ? inferred[key] : "" 
+        placeholder: `Type custom ${label.toLowerCase()}...`, 
+        value: isCustom ? displayVal : "",
+        style: isCustom ? "display: block; width: 100%; margin-top: 6px;" : "display: none;"
       });
-      input.addEventListener("input", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "None" });
+
+      sel.addEventListener("change", e => {
+        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value; });
+        ctx.requestRender();
+        if (e.target.value === "__custom__") {
+          setTimeout(() => customInput.focus(), 50);
+        }
+      });
+
+      customInput.addEventListener("input", e => {
+        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "__custom__"; });
         ctx.requestRender();
       });
-      input.addEventListener("change", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "None" });
+      
+      customInput.addEventListener("change", e => {
         setTimeout(() => ctx.requestRender(), 150);
       });
-      return field(label, el("div", { style: "position: relative;" }, [input, dl]));
+
+      return field(label, el("div", {}, [sel, customInput]));
     };
 
     let techStackFields = null;
