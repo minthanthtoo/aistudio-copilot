@@ -1,9 +1,16 @@
 (function initAISQContent() {
   "use strict";
+  console.log("[AISQ] content.js started execution.");
 
   const ROOT_ID = "aisq-extension-root";
-  if (globalThis.__AISQ_CONTENT_LOADED__ && document.getElementById(ROOT_ID)) return;
-  if (globalThis.__AISQ_CONTENT_LOADED__) globalThis.__AISQ_RUNTIME__?.stop?.();
+  if (globalThis.__AISQ_CONTENT_LOADED__ && document.getElementById(ROOT_ID)) {
+    console.log("[AISQ] content.js aborted: already loaded.");
+    return;
+  }
+  if (globalThis.__AISQ_CONTENT_LOADED__) {
+    console.log("[AISQ] content.js stopping old runtime.");
+    globalThis.__AISQ_RUNTIME__?.stop?.();
+  }
   globalThis.__AISQ_CONTENT_LOADED__ = true;
 
   const Core = globalThis.AISQCore;
@@ -599,10 +606,18 @@
       acceptStoredState(changes[STORAGE_KEY].newValue);
     });
     tickIntervalId = setInterval(() => {
-      if (typeof ctx.tick === "function") void ctx.tick();
+      if (typeof ctx.tick === "function") {
+        void ctx.tick();
+      } else {
+        console.error("[AISQ] INTERVAL ERROR: ctx.tick is not a function! It is:", typeof ctx.tick);
+      }
     }, TICK_MS);
     globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
-    if (typeof ctx.tick === "function") void ctx.tick();
+    if (typeof ctx.tick === "function") {
+      void ctx.tick();
+    } else {
+      console.error("[AISQ] SYNC ERROR: ctx.tick is not a function! It is:", typeof ctx.tick);
+    }
     globalThis.__aisq = Object.freeze({ show: () => mutate(() => { state.settings.panelOpen = true; }), hide: () => mutate(() => { state.settings.panelOpen = false; }), scan: () => ctx.scanHostCached(), state: () => { Core.syncLegacyAliases(state); return clone(state); }, diagnostics: () => clone(ctx.createDiagnosticSnapshot()), tick: () => ctx.tick(), save: () => saveNow(), importText: ctx.importText });
   }
 

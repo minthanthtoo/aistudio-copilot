@@ -1,5 +1,6 @@
 (function initAISQRunner(global) {
   "use strict";
+try {
   const Core = global.AISQCore;
   const ctx = global.AISQContext;
   const PHASES = Core.PHASES;
@@ -701,4 +702,8 @@
     renderCountdowns,
     tick
   });
+  console.log("[AISQ] runner.js loaded successfully. ctx.tick is now:", typeof ctx.tick);
+} catch (err) {
+  console.error("[AISQ] ERROR in runner.js initialization:", err);
+}
 })(typeof globalThis !== "undefined" ? globalThis : this);
