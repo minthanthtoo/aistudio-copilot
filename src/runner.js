@@ -1,5 +1,6 @@
 (function initAISQRunner(global) {
   "use strict";
+  console.log("[AISQ] runner.js top-level execution started!");
 try {
   const Core = global.AISQCore;
   const ctx = global.AISQContext;
@@ -541,16 +542,7 @@ try {
         ctx.touchState();
         ctx.scheduleSave();
       }
-      if (ctx.state.runner.phase === PHASES.AWAITING || ctx.state.runner.phase === PHASES.RUNNING) {
-        if (ctx.state.runner.submittedAt && Date.now() - ctx.state.runner.submittedAt > 120000) {
-          Core.commitTransition(ctx.state, Core.EVENTS.VERIFY, { status: 'FAIL', reason: 'TIMEOUT' });
-          Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.RETRY_WAIT });
-          ctx.state.runner.nextActionAt = Date.now() + 5000;
-          markPromptError("Silent host hang detected (2 minute timeout)");
-          ctx.requestRender();
-          return;
-        }
-      }
+
       if (ctx.state.runner.phase === PHASES.READY) beginSubmission(host);
       else if (ctx.state.runner.phase === PHASES.SUBMITTING) await finishSubmission(host);
       else {
