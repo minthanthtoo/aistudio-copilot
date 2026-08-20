@@ -548,7 +548,7 @@
         button("⬆️ Restore Backup", () => projectFileInput.click(), "ghost")
       ]));
 
-      details.append(parserSection, myTemplatesContainer, dataSection);
+      details.append(myTemplatesContainer, dataSection);
     }
     return details;
   }
