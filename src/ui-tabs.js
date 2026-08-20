@@ -35,30 +35,26 @@
   }
 
   function importText(raw, strategy = ctx.state.ui.splitStrategy, options = {}) {
-    const result = Core.parsePromptPack(raw, strategy);
-    if (!result.prompts.length) return { ok: false, error: "Nothing to import" };
-    const number = (ctx.state.chains || []).length + 1;
-    const chain = Core.makeChain(options.name || `Chain ${number}`, result.prompts, raw, { splitStrategy: result.strategy, pastedAt: Core.nowISO(), preface: options.preface || result.preface });
-    const placement = options.placement || ctx.state.settings.pastePlacement;
-    const commandResult = ctx.command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? ctx.state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${result.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: result.strategy } } });
-
+    const parsed = Core.parsePromptPack(raw, strategy);
+    if (!parsed.prompts.length) {
+      alert("No prompts found.");
+      return { ok: false };
+    }
+    const chain = Core.makeChain({ name: options.name || "Imported Chain" });
+    if (options.preface) chain.preface = options.preface;
+    chain.prompts = parsed.prompts.map(p => Core.makePrompt(p));
+    
+    const placement = ctx.state.settings.insertAtBottom ? "bottom" : "after";
+    const commandResult = ctx.command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? ctx.state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${parsed.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: parsed.strategy } } });
+    
     if (commandResult.ok) {
-      ctx.state.ui.draft = "";
-      ctx.state.ui.detectedStrategy = result.strategy;
-      const draftControl = ctx.shadow?.querySelector(".aisq-draft");
-      if (draftControl) draftControl.value = "";
-      
-      // Auto-switch to stack tab so the user sees it worked
-      ctx.state.settings.activeTab = "stack";
-      
-      const stackMeter = ctx.shadow?.getElementById("aisq-stack-meter");
-
-      if (stackMeter) {
-        const counts = Core.stackCounts(ctx.state);
-        stackMeter.textContent = `Stack now: ${counts.chains} chain(s) · ${counts.prompts} prompt(s) · ${counts.queued} queued`;
-      }
-      ctx.touchState();
-      ctx.scheduleSave();
+      ctx.state.ui.lastImportId = chain.id;
+      ctx.toast(`✅ Added "${chain.name}" (${parsed.prompts.length} prompts)`, "success", {
+        onUndo: () => {
+          ctx.command("DELETE_CHAIN", { chainId: chain.id }, { history: { kind: "undo_import", message: `Undo import of ${chain.name}` } });
+          ctx.toast(`↩ Undid import of "${chain.name}"`, "undo");
+        }
+      });
       ctx.requestRender();
     }
     return commandResult;
@@ -78,265 +74,451 @@
     }
 
     const select = el("select", { className: "aisq-select" }, [el("option", { text: "-- Select a chain to copy --", value: "" })]);
-    const btn = button("Import Chain", () => {
-      if (!select.value) return;
-      const [sourceProjectKey, chainId] = select.value.split("|");
-      ctx.command("IMPORT_CHAIN_FROM_PROJECT", { sourceProjectKey, chainId });
-      select.value = "";
-      ctx.mutate(() => { ctx.state.settings.activeTab = "stack"; });
-    }, "primary");
-    btn.disabled = true;
+    const previewContainer = el("div", { style: "margin-top: 8px;" });
 
-    otherProjects.forEach(p => {
-      const optgroup = el("optgroup", { label: p.key.replace("app:", "App: ").replace("prompt:", "Prompt: ") });
-      p.chains?.forEach(c => {
-        const option = el("option", { value: `${p.key}|${c.id}`, text: `${c.name} (${c.prompts.length} prompts)` });
-        optgroup.append(option);
-      });
-      select.append(optgroup);
-    });
+    for (const p of otherProjects) {
+      const group = el("optgroup", { label: `App: ${p.key}` });
+      for (const c of p.chains) group.append(el("option", { value: `${p.key}|${c.id}`, text: `${c.name} (${c.prompts.length} prompts)` }));
+      select.append(group);
+    }
     
-    select.addEventListener("change", () => {
-      btn.disabled = !select.value;
+    let selectedSourceChain = null;
+    let selectedProjectKey = null;
+
+    select.addEventListener("change", (e) => {
+      previewContainer.innerHTML = "";
+      if (!e.target.value) {
+        selectedSourceChain = null;
+        selectedProjectKey = null;
+        ctx.requestRender();
+        return;
+      }
+      const [sourceProjectKey, chainId] = e.target.value.split("|");
+      selectedProjectKey = sourceProjectKey;
+      const sourceProject = otherProjects.find(p => p.key === sourceProjectKey);
+      selectedSourceChain = sourceProject?.chains.find(c => c.id === chainId);
+      
+      if (selectedSourceChain) {
+        const previewText = selectedSourceChain.preface || (selectedSourceChain.prompts[0] ? selectedSourceChain.prompts[0].text : "Empty chain");
+        const previewSnippet = previewText.substring(0, 100) + (previewText.length > 100 ? "..." : "");
+        const previewCard = el("div", { style: "border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px; font-size: 11px; background: rgba(0,0,0,0.2);" }, [
+          el("div", { style: "font-weight: 600; margin-bottom: 4px; color: #b9a9ff;", text: `📋 ${selectedSourceChain.name}` }),
+          el("div", { style: "color: #9995a5; margin-bottom: 6px;", text: `${selectedSourceChain.prompts.length} prompts` }),
+          el("div", { style: "color: #cfcbd9; white-space: pre-wrap; opacity: 0.8;", text: `Snippet: ${previewSnippet}` })
+        ]);
+        
+        const btn = button("Import Chain", () => {
+          const res = ctx.command("IMPORT_CHAIN_FROM_PROJECT", { sourceProjectKey, chainId });
+          if (res.ok) {
+            const importedChain = ctx.state.chains.find(c => c.name === selectedSourceChain.name && c.prompts.length === selectedSourceChain.prompts.length);
+            if (importedChain) {
+               ctx.state.ui.lastImportId = importedChain.id;
+               ctx.toast(`✅ Imported "${importedChain.name}"`, "success", {
+                 onUndo: () => {
+                   ctx.command("DELETE_CHAIN", { chainId: importedChain.id });
+                   ctx.toast(`↩ Undid import`, "undo");
+                 }
+               });
+            }
+          }
+          select.value = "";
+          previewContainer.innerHTML = "";
+          ctx.mutate(() => { ctx.state.settings.activeTab = "stack"; });
+        }, "primary");
+        
+        previewContainer.append(previewCard, el("div", { style: "margin-top: 8px; display: flex; gap: 8px;" }, [btn]));
+      }
     });
 
-    importWrap.append(el("div", { style: "display: flex; gap: 8px;" }, [select, btn]));
+    importWrap.append(select, previewContainer);
     return importWrap;
   }
 
 
   function renderBuild() {
-    ctx.state.ui.specMode = ctx.state.ui.specMode || "paste";
-    ctx.state.ui.specScreen = ctx.state.ui.specScreen || 0;
     ctx.state.ui.specAnswers = ctx.state.ui.specAnswers || {};
-
-    const modeToggle = el("div", { className: "aisq-mode-toggle", style: "display: grid; grid-template-columns: 1fr 1fr 1fr; margin-bottom: 12px; gap: 8px;" }, [
-      button("📋 Paste", () => ctx.mutate(() => { ctx.state.ui.specMode = "paste"; ctx.requestRender(); }), ctx.state.ui.specMode === "paste" ? "primary" : "ghost"),
-      button("✨ Wizard", () => ctx.mutate(() => { ctx.state.ui.specMode = "generate"; ctx.requestRender(); }), ctx.state.ui.specMode === "generate" ? "primary" : "ghost"),
-      button("🔗 Import", () => ctx.mutate(() => { ctx.state.ui.specMode = "import"; ctx.requestRender(); }), ctx.state.ui.specMode === "import" ? "primary" : "ghost")
-    ]);
-
-    let content;
-    if (ctx.state.ui.specMode === "paste") {
-      content = renderPasteMode();
-    } else if (ctx.state.ui.specMode === "generate") {
-      content = renderWizardMode();
-    } else {
-      content = renderImportMode();
+    ctx.state.ui.draft = ctx.state.ui.draft || "";
+    ctx.state.ui.buildView = ctx.state.ui.buildView || "input"; // "input", "wizard_details", "advanced"
+    
+    // Empty State Check
+    if (!(ctx.state.chains || []).length && !ctx.state.ui.draft && ctx.state.ui.buildView === "input") {
+      return renderEmptyState();
+    }
+    
+    if (ctx.state.ui.buildView === "wizard_details") {
+      return renderWizardDetails();
     }
 
-        return el("div", { className: "aisq-section" }, [modeToggle, content]);
+    const smartInputContainer = el("div", { className: "aisq-section" }, [
+      el("p", { className: "aisq-copy", text: "Paste prompts, a ChatGPT link, or describe what you want to build:" }),
+      renderSmartInput(),
+      renderAdvancedSection()
+    ]);
+    return smartInputContainer;
   }
 
-  function renderPasteMode() {
+  function renderEmptyState() {
+    const specApi = globalThis.AISQSpec;
+    
+    const mkCard = (icon, title, desc, onClick) => el("button", {
+      className: "aisq-quickstart-card",
+      on: { click: onClick }
+    }, [
+      el("div", { style: "font-size: 24px; margin-bottom: 8px;", text: icon }),
+      el("div", { style: "font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #f5f4fa;", text: title }),
+      el("div", { style: "font-size: 11px; color: #a9a6b4; line-height: 1.3;", text: desc })
+    ]);
+
+    const cards = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;" }, [
+      mkCard("📊", "SaaS Dashboard", "B2B app with multi-tenancy", () => startWizardWithTemplate("saas-dashboard")),
+      mkCard("📁", "Portfolio", "Minimalist personal site", () => startWizardWithTemplate("portfolio")),
+      mkCard("🛒", "E-Commerce", "Shop with cart & checkout", () => startWizardWithTemplate("e-commerce")),
+      mkCard("🤖", "AI Agent", "LLM wrapper or swarm", () => startWizardWithTemplate("ai-agent")),
+      mkCard("📱", "Mobile App", "React Native or Flutter app", () => startWizardWithTemplate("mobile-social")),
+      mkCard("🎮", "Web Game", "Canvas-based game loop", () => startWizardWithTemplate("web-game"))
+    ]);
+
+    const descInput = el("textarea", { 
+      className: "aisq-draft", 
+      style: "min-height: 60px; margin-bottom: 12px;", 
+      placeholder: "e.g. A to-do app with React and Supabase...",
+      on: { 
+        keydown: (e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+             e.preventDefault();
+             startWizardWithDescription(e.target.value);
+          }
+        }
+      }
+    });
+
+    const generateBtn = button("✨ Generate Prompt Sequence", () => startWizardWithDescription(descInput.value), "primary");
+
+    return el("div", { className: "aisq-section" }, [
+      el("div", { style: "font-size: 16px; font-weight: 600; margin-bottom: 12px;" }, [document.createTextNode("🚀 What are you building?")]),
+      cards,
+      el("div", { style: "display: flex; align-items: center; gap: 12px; margin-bottom: 24px;" }, [
+        el("hr", { style: "flex: 1; border: none; border-top: 1px solid rgba(255,255,255,0.1);" }),
+        el("span", { style: "font-size: 11px; color: #888;" }, [document.createTextNode("or describe it")]),
+        el("hr", { style: "flex: 1; border: none; border-top: 1px solid rgba(255,255,255,0.1);" })
+      ]),
+      descInput,
+      el("div", { style: "display: flex; gap: 8px; justify-content: space-between; align-items: center;" }, [
+        el("div", { style: "display: flex; gap: 8px;" }, [
+          button("📋 Paste prompts", () => { ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.ui.buildView = "input"; }); ctx.requestRender(); }, "ghost"),
+          button("📂 Copy from project", () => { ctx.mutate(() => { ctx.state.ui.buildView = "input"; ctx.state.ui.showAdvanced = true; }); ctx.requestRender(); }, "ghost")
+        ]),
+        generateBtn
+      ])
+    ]);
+  }
+
+  function startWizardWithTemplate(templateId) {
+    const specApi = globalThis.AISQSpec;
+    const t = specApi.BUILT_IN_TEMPLATES.find(x => x.id === templateId);
+    if (!t) return;
+    ctx.mutate(() => {
+      ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
+      ctx.state.ui.buildView = "wizard_details";
+    });
+    ctx.requestRender();
+  }
+
+  function startWizardWithDescription(desc) {
+    if (!desc.trim()) return;
+    ctx.mutate(() => {
+      ctx.state.ui.specAnswers = { description: desc.trim() };
+      ctx.state.ui.buildView = "wizard_details";
+    });
+    ctx.requestRender();
+  }
+
+  function renderSmartInput() {
+    let detectType = "empty"; // empty, chatgpt, json, prompts, natural
+    const val = ctx.state.ui.draft.trim();
+    
+    let parsedPrompts = null;
+
+    if (!val) {
+      detectType = "empty";
+    } else if (/https?:\/\/(www\.)?chatgpt\.com\/share\/[0-9a-fA-F-]+/.test(val) || val.includes("streamController.enqueue")) {
+      detectType = "chatgpt";
+    } else if (val.startsWith("{") && val.endsWith("}")) {
+      try { JSON.parse(val); detectType = "json"; } catch(e) { detectType = "natural"; }
+    } else {
+      parsedPrompts = Core.parsePromptPack(val, ctx.state.ui.splitStrategy || "auto");
+      if (parsedPrompts.prompts.length > 1) {
+        detectType = "prompts";
+      } else {
+        detectType = "natural";
+      }
+    }
+
     const draft = el("textarea", {
       className: "aisq-draft",
       value: ctx.state.ui.draft,
-      placeholder: "Paste here. Stage/Phase headings, IDs, or delimiters are detected automatically.",
+      placeholder: "Paste prompts, ChatGPT share URL, JSON template, or app description...",
       on: {
-        input: (event) => {
-          ctx.state.ui.draft = event.target.value;
-          if (/https?:\/\/(www\.)?chatgpt\.com\/share\/[0-9a-fA-F-]+/.test(ctx.state.ui.draft)) {
-            ctx.state.ui.specMode = "import";
-            ctx.state.ui.importSource = ctx.state.ui.draft;
-            ctx.state.ui.draft = "";
-            ctx.requestRender();
-            return;
-          }
-          const parsed = Core.parsePromptPack(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-          ctx.state.ui.detectedStrategy = parsed.strategy;
-          ctx.scheduleSave();
-          const meter = ctx.shadow.getElementById("aisq-detect-meter");
-          if (meter) {
-            meter.textContent = `${parsed.prompts.length} prompt${parsed.prompts.length === 1 ? "" : "s"} · ${parsed.strategy}`;
+        input: (e) => {
+          ctx.state.ui.draft = e.target.value;
+          ctx.requestRender();
+        },
+        keydown: (e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+             e.preventDefault();
+             if (detectType === "prompts") {
+                const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
+                if (res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); }
+             } else if (detectType === "natural") {
+                startWizardWithDescription(ctx.state.ui.draft);
+             }
           }
         }
       }
     });
-    const strategy = el("select", { className: "aisq-select", value: ctx.state.ui.splitStrategy });
-    for (const [value, label] of [["auto", "Auto detect"], ["stage", "Stage / Phase headings"], ["id", "P001 / R001 IDs"], ["prompt", "Prompt headings"], ["delimiter", "Delimiters"], ["numbered", "Numbered blocks"], ["single", "Single prompt"]]) {
-      const option = el("option", { value, text: label });
-      if (value === ctx.state.ui.splitStrategy) option.selected = true;
-      strategy.append(option);
+
+    let actionArea = el("div", { className: "aisq-actions", style: "margin-top: 8px;" });
+    
+    if (detectType === "chatgpt") {
+      actionArea.append(button("Fetch & Analyze ChatGPT Link", async () => {
+         const source = val;
+         ctx.toast("Fetching conversation data...", "info");
+         try {
+            let rawHtml = source;
+            if (source.startsWith("http")) {
+              const res = await chrome.runtime.sendMessage({ type: "AISQ_FETCH_URL", url: source });
+              if (!res.ok) throw new Error(res.error || "Failed to fetch URL.");
+              rawHtml = res.html;
+            }
+            const extractorApi = globalThis.AISQChatGPTExtractor;
+            const conversation = extractorApi.extractConversation(rawHtml, source);
+            const specAnswers = extractorApi.analyzeTranscript(conversation);
+            ctx.mutate(() => {
+              ctx.state.ui.draft = "";
+              ctx.state.ui.specAnswers = specAnswers;
+              ctx.state.ui.buildView = "wizard_details";
+              ctx.toast(`✅ Extracted ${conversation.visibleMessages.length} messages`, "success");
+            });
+            ctx.requestRender();
+         } catch(e) {
+            ctx.toast(`Error: ${e.message}`, "error");
+         }
+      }, "primary"));
+    } else if (detectType === "json") {
+      actionArea.append(button("Load as Template", () => {
+         const specApi = globalThis.AISQSpec;
+         const parsed = specApi.deserializeTemplate(val);
+         if (parsed) {
+           ctx.mutate(() => { 
+             ctx.state.ui.specAnswers = parsed;
+             ctx.state.ui.draft = "";
+             ctx.state.ui.buildView = "wizard_details";
+             ctx.toast("✅ Template loaded", "success");
+           });
+           ctx.requestRender();
+         } else {
+           ctx.toast("Invalid template JSON.", "error");
+         }
+      }, "primary"));
+    } else if (detectType === "prompts") {
+      actionArea.append(
+        el("div", { className: "aisq-meter", text: `${parsedPrompts.prompts.length} prompt(s) detected via ${parsedPrompts.strategy}` }),
+        button("Add to Queue", () => {
+           const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
+           if(res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); }
+        }, "primary"),
+        button("Add & Run ▶", () => {
+           const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
+           if (res.ok) {
+             ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; });
+             void ctx.startRunner();
+           }
+        }, "ghost")
+      );
+    } else if (detectType === "natural") {
+      actionArea.append(
+        button("✨ Build with Wizard →", () => startWizardWithDescription(val), "primary")
+      );
+    } else {
+      const specApi = globalThis.AISQSpec;
+      const quickStartRow = el("div", { style: "display: flex; overflow-x: auto; gap: 8px; margin-top: 12px; padding-bottom: 8px;" }, 
+        specApi.BUILT_IN_TEMPLATES.map(t => el("button", { 
+          style: "display: flex; flex-direction: column; align-items: flex-start; padding: 8px; border: 1px solid #ffffff16; border-radius: 6px; background: #1d1c22; min-width: 140px; cursor: pointer; text-align: left; transition: transform 0.15s;",
+          on: { click: () => startWizardWithTemplate(t.id) }
+        }, [
+          el("div", { style: "font-size: 20px; margin-bottom: 4px;", text: t.icon }),
+          el("div", { style: "font-weight: 500; font-size: 13px; color: #f5f4fa;", text: t.name }),
+          el("div", { style: "font-size: 11px; color: #a9a6b4; margin-top: 2px;", text: t.scale })
+        ]))
+      );
+      actionArea.append(el("div", { style: "width: 100%;" }, [
+        el("div", { style: "font-size: 12px; font-weight: 600; color: #a9a6b4;" }, [document.createTextNode("Quick Starts")]),
+        quickStartRow
+      ]));
     }
-    strategy.addEventListener("change", () => {
-      ctx.state.ui.splitStrategy = strategy.value;
-      ctx.state.ui.detectedStrategy = Core.parsePromptPack(ctx.state.ui.draft, strategy.value).strategy;
-      ctx.scheduleSave();
-      ctx.requestRender();
-    });
-    const parsed = Core.parsePromptPack(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-    const meter = el("div", { className: "aisq-meter", text: `${parsed.prompts.length} prompt${parsed.prompts.length === 1 ? "" : "s"} · ${parsed.strategy}` });
-    meter.id = "aisq-detect-meter";
-    const stack = Core.stackCounts(ctx.state);
-    const stackMeter = el("div", { className: "aisq-meter", text: `Stack now: ${stack.chains} chain(s) · ${stack.prompts} prompt(s) · ${stack.queued} queued` });
-    stackMeter.id = "aisq-stack-meter";
-    const add = () => importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-    const addRun = () => {
-      const result = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-      if (result.ok) void ctx.startRunner();
-    };
-    return el("div", {}, [
-      el("p", { className: "aisq-copy", text: "Paste a sequence of prompts. Click 'Add chain' to append it to the execution stack." }),
-      field("Split strategy", strategy),
-      field("Paste intake", draft),
-      meter,
-      stackMeter,
-      el("div", { className: "aisq-actions" }, [button("Add chain", add, "primary"), button("Add & start", addRun, "ghost")])
-    ]);
+
+    return el("div", { style: "position: relative;" }, [draft, actionArea]);
   }
 
-  function renderImportMode() {
-    ctx.state.ui.importSource = ctx.state.ui.importSource || "";
-    ctx.state.ui.importState = ctx.state.ui.importState || "idle"; // idle, fetching, extracting, success, error
-    ctx.state.ui.importStatusText = ctx.state.ui.importStatusText || "";
-    ctx.state.ui.importResult = ctx.state.ui.importResult || null;
+  function renderAdvancedSection() {
+    ctx.state.ui.showAdvanced = ctx.state.ui.showAdvanced || false;
+    
+    const summary = el("summary", { style: "cursor: pointer; font-weight: 600; font-size: 12px; color: #a9a6b4; outline: none; margin-bottom: 12px;", text: "⚙️ Advanced" });
+    summary.addEventListener("click", (e) => {
+      e.preventDefault();
+      ctx.mutate(() => { ctx.state.ui.showAdvanced = !ctx.state.ui.showAdvanced; });
+      ctx.requestRender();
+    });
 
-    if (ctx.state.ui.importState === "idle" || ctx.state.ui.importState === "error") {
-      const intake = el("textarea", {
-        className: "aisq-draft",
-        style: "min-height: 80px;",
-        value: ctx.state.ui.importSource,
-        placeholder: "Paste ChatGPT share URL, or raw HTML/JSON here...",
-                on: { input: e => { 
-          ctx.state.ui.importSource = e.target.value;
-          const btn = e.target.parentElement?.parentElement?.querySelector("button");
-          if (btn) {
-            btn.disabled = !e.target.value.trim();
-            btn.className = `aisq-btn ${e.target.value.trim() ? "primary" : "ghost"}`;
-          }
-        } }
+    const details = el("details", { open: ctx.state.ui.showAdvanced, style: "margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;" }, [summary]);
+
+    if (ctx.state.ui.showAdvanced) {
+      const strategy = el("select", { className: "aisq-select" });
+      for (const [value, label] of [["auto", "Detection mode: Auto"], ["stage", "Detection mode: Stage / Phase headings"], ["id", "Detection mode: P001 / R001 IDs"], ["prompt", "Detection mode: Prompt headings"], ["delimiter", "Detection mode: Delimiters"], ["numbered", "Detection mode: Numbered blocks"], ["single", "Detection mode: Single prompt"]]) {
+        const option = el("option", { value, text: label });
+        if (value === (ctx.state.ui.splitStrategy || "auto")) option.selected = true;
+        strategy.append(option);
+      }
+      strategy.addEventListener("change", () => {
+        ctx.state.ui.splitStrategy = strategy.value;
+        ctx.requestRender();
       });
 
-      const analyzeBtn = button("Fetch & Analyze", async () => {
-        const source = ctx.state.ui.importSource.trim();
-        if (!source) return;
-
-        ctx.mutate(() => {
-          ctx.state.ui.importState = "fetching";
-          ctx.state.ui.importStatusText = "Fetching conversation data...";
-        });
-        ctx.requestRender();
-
-        try {
-          const extractorApi = globalThis.AISQChatGPTExtractor;
-          if (!extractorApi) throw new Error("Extractor API not loaded.");
-
-          let rawHtml = source;
-          if (source.startsWith("http")) {
-            const res = await chrome.runtime.sendMessage({ type: "AISQ_FETCH_URL", url: source });
-            if (!res.ok) throw new Error(res.error || "Failed to fetch URL.");
-            rawHtml = res.html;
-          }
-
-          ctx.mutate(() => {
-            ctx.state.ui.importState = "extracting";
-            ctx.state.ui.importStatusText = "Extracting messages & analyzing requirements...";
-          });
-          ctx.requestRender();
-
-          // Yield to let UI update
-          await new Promise(r => setTimeout(r, 50));
-
-          const conversation = extractorApi.extractConversation(rawHtml, source);
-          const specAnswers = extractorApi.analyzeTranscript(conversation);
-
-          ctx.mutate(() => {
-            ctx.state.ui.importResult = { conversation, specAnswers };
-            ctx.state.ui.importState = "success";
-            ctx.state.ui.specAnswers = specAnswers; // prefill wizard
-          });
-          ctx.requestRender();
-
-        } catch (err) {
-          ctx.mutate(() => {
-            ctx.state.ui.importState = "error";
-            ctx.state.ui.importStatusText = err.message;
-          });
-          ctx.requestRender();
-        }
-      }, ctx.state.ui.importSource ? "primary" : "ghost");
-      if (!ctx.state.ui.importSource) analyzeBtn.disabled = true;
-
-      const children = [
-        el("p", { className: "aisq-copy", text: "Import an existing ChatGPT brainstorming session. We'll extract the tech stack and core features automatically." }),
-        field("Chat Source", intake),
-        ctx.state.ui.importState === "error" ? el("div", { style: "color: red; font-size: 11px; margin-bottom: 8px;" }, [el("strong", { text: "Error: " }), document.createTextNode(ctx.state.ui.importStatusText)]) : null,
-        el("div", { className: "aisq-actions" }, [analyzeBtn])
-      ].filter(Boolean);
-      
-      const crossImport = renderCrossProjectImport();
-      if (crossImport) {
-        children.push(el("hr", { style: "margin: 16px 0; border: none; border-top: 1px solid rgba(115,87,255,0.2);" }));
-        children.push(crossImport);
-      }
-      
-      return el("div", {}, children);
-    }
-
-
-    if (ctx.state.ui.importState === "fetching" || ctx.state.ui.importState === "extracting") {
-      return el("div", { style: "text-align: center; padding: 24px;" }, [
-        el("div", { className: "aisq-spinner", style: "margin: 0 auto 12px auto; display: block;" }),
-        el("div", { style: "font-size: 13px; font-weight: 500;" }, [document.createTextNode(ctx.state.ui.importStatusText)])
-      ]);
-    }
-
-    if (ctx.state.ui.importState === "success") {
-      const { conversation, specAnswers } = ctx.state.ui.importResult;
-      
-      const summaryCard = el("div", { style: "background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 12px;" }, [
-        el("div", { style: "font-weight: 600; font-size: 14px; margin-bottom: 4px;" }, [document.createTextNode("🎉 Analysis Complete!")]),
-        el("div", { style: "font-size: 12px; margin-bottom: 8px; color: #475569;" }, [document.createTextNode(`Extracted ${conversation.visibleMessages.length} messages`)]),
-        
-        el("div", { style: "display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; font-size: 12px;" }, [
-          el("strong", { text: "Title:" }), el("span", { text: specAnswers.name }),
-          el("strong", { text: "Type:" }), el("span", { text: specAnswers.archetype }),
-          el("strong", { text: "Stack:" }), el("span", { text: [specAnswers.frontend, specAnswers.backend, specAnswers.database].filter(x => x && x !== "None").join(", ") || "None specified" })
-        ])
-      ]);
-
-      const reviewBtn = button("✨ Review & Edit in Wizard", () => {
-        ctx.mutate(() => {
-          ctx.state.ui.specMode = "generate";
-          ctx.state.ui.specScreen = 1;
-          ctx.state.ui.importState = "idle";
-        });
+      const openWizardBtn = button("✨ Open Full Wizard", () => {
+        ctx.mutate(() => { ctx.state.ui.buildView = "wizard_details"; });
         ctx.requestRender();
       }, "ghost");
 
-      const generateBtn = button("🚀 Generate Prompt Chain", () => {
+      details.append(
+        field("Detection mode Override", strategy),
+        el("div", { style: "margin-top: 12px;" }, [openWizardBtn]),
+        renderCrossProjectImport()
+      );
+    }
+    
+    return details;
+  }
+
+  function renderWizardDetails() {
+    const specApi = globalThis.AISQSpec;
+    const inferred = specApi.inferDefaults(ctx.state.ui.specAnswers);
+    const visible = specApi.getVisibleSections(inferred);
+    ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips || [];
+    ctx.state.ui.specAnswers.stageOverrides = ctx.state.ui.specAnswers.stageOverrides || {};
+    
+    const stages = specApi.resolveStages(inferred);
+    const overrides = ctx.state.ui.specAnswers.stageOverrides;
+    const result = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
+    
+    const stackSummary = [inferred.frontend, inferred.backend, inferred.database].filter(x => x && x !== "None").join(" + ") || "No stack specified";
+    
+    const previewCard = el("div", { style: "background: rgba(115,87,255,0.1); border: 1px solid rgba(115,87,255,0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px;" }, [
+      el("div", { style: "display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;" }, [
+        el("div", { style: "font-weight: 600; font-size: 14px; color: #fff;" }, [document.createTextNode(ctx.state.ui.specAnswers.name || "Untitled App")]),
+        el("div", { style: "font-size: 11px; color: #b9a9ff; padding: 2px 6px; background: rgba(115,87,255,0.2); border-radius: 4px;" }, [document.createTextNode(inferred.scale)])
+      ]),
+      el("div", { style: "font-size: 12px; color: #cfcbd9; margin-bottom: 4px;" }, [document.createTextNode(`${result.stageCount} stages · ~${result.charCount.toLocaleString()} chars`)]),
+      el("div", { style: "font-size: 11px; color: #9995a5;" }, [document.createTextNode(stackSummary)])
+    ]);
+
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); } } });
+    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); } } });
+    
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); } } });
+    const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
+    const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
+      const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
+      return el("button", { text: (isSelected ? "✓ " : "+ ") + s, style: `font-size: 11px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; background: ${isSelected ? '#e0f0ff' : 'transparent'}; color: ${isSelected ? '#000' : '#cfcbd9'}; cursor: pointer;`, on: { click: () => {
         ctx.mutate(() => {
-          ctx.state.ui.specMode = "generate";
-          ctx.state.ui.specScreen = 2;
-          ctx.state.ui.importState = "idle";
+          if (isSelected) {
+            ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips.filter(x => x !== s);
+          } else {
+            ctx.state.ui.specAnswers.featureChips.push(s);
+          }
         });
         ctx.requestRender();
-      }, "primary");
+      }} });
+    }));
 
-      return el("div", {}, [
-        summaryCard,
-        el("div", { className: "aisq-actions" }, [reviewBtn, generateBtn])
+    const mkTechSelect = (label, key, options) => {
+      const sel = el("select", { className: "aisq-select" }, [el("option", { value: "", text: `-- Select ${label} --` }), ...options.map(o => el("option", { value: o, text: o, selected: inferred[key] === o }))]);
+      sel.addEventListener("change", e => { ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value }); ctx.requestRender(); });
+      return field(label, sel);
+    };
+
+    let techStackFields = null;
+    if (visible.techStack) {
+      techStackFields = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, [
+        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS", "Next.js 14 App Router", "Next.js", "Astro", "React Native", "Angular", "None"]),
+        mkTechSelect("Backend", "backend", ["Node.js", "Node.js + Express", "Python", "Python + FastAPI", "Go", "Firebase", "Supabase", "Next.js API Routes", "Node.js + NestJS", "Java Spring Boot", "None"]),
+        mkTechSelect("Database", "database", ["PostgreSQL", "PostgreSQL (Supabase)", "PostgreSQL (pgvector)", "MongoDB", "MySQL", "Redis", "Firestore", "None"]),
+        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "Render", "App Stores", "GitHub Pages"])
       ]);
     }
 
-    return el("div", { text: "Unknown ctx.state" });
+    const stageCards = stages.map((s, i) => {
+      const isEnabled = overrides[s.id] !== undefined ? overrides[s.id] : s.enabled;
+      const toggle = el("input", { type: "checkbox", checked: isEnabled, disabled: s.required });
+      toggle.addEventListener("change", e => {
+        ctx.mutate(() => { ctx.state.ui.specAnswers.stageOverrides[s.id] = e.target.checked; });
+        ctx.requestRender();
+      });
+      const header = el("summary", { style: "cursor: pointer; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px;" }, [
+        toggle,
+        el("span", { text: `Stage ${i + 1}: ${s.title}` })
+      ]);
+      const previewText = s.builder(inferred).trim().substring(0, 150) + "...";
+      const body = el("div", { style: "padding: 8px; font-size: 11px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.1); white-space: pre-wrap;", text: previewText });
+      return el("details", { style: "border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; margin-bottom: 4px;" }, [header, body]);
+    });
+
+    const submit = () => {
+      const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
+      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
+      if (commandResult.ok) {
+        ctx.mutate(() => { ctx.state.ui.buildView = "input"; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; });
+        ctx.requestRender();
+      }
+    };
+    
+    const submitAndStart = () => {
+      const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
+      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
+      if (commandResult.ok) {
+        ctx.mutate(() => { 
+          ctx.state.ui.buildView = "input"; 
+          ctx.state.ui.specAnswers = {}; 
+          ctx.state.settings.activeTab = "stack";
+        });
+        void ctx.startRunner();
+      }
+    };
+
+    return el("div", { className: "aisq-section" }, [
+      el("div", { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;" }, [
+        button("← Back", () => { ctx.mutate(() => { ctx.state.ui.buildView = "input"; }); ctx.requestRender(); }, "ghost"),
+        el("strong", { text: "App Wizard" })
+      ]),
+      previewCard,
+      field("Name", nameInput),
+      field("Description", descInput),
+      field("Features", el("div", {}, [featureText, suggestionChips])),
+      techStackFields ? field("Tech Stack", techStackFields) : null,
+      
+      el("details", { style: "margin-top: 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px;" }, [
+        el("summary", { style: "cursor: pointer; font-weight: 600; outline: none;", text: "Review Stages & Text" }),
+        el("div", { style: "margin-top: 12px;" }, stageCards),
+        el("pre", { style: "white-space: pre-wrap; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; max-height: 200px; overflow: auto; margin-top: 12px;", text: result.preface + "
+
+" + result.raw })
+      ]),
+
+      el("div", { className: "aisq-actions", style: "margin-top: 16px;" }, [
+        button("Add to Queue", submit, "ghost"),
+        button("Generate & Run ▶", submitAndStart, "primary")
+      ])
+    ]);
   }
-
-  function renderWizardMode() {
-    const specApi = globalThis.AISQSpec;
-    if (!specApi) return el("div", { text: "AISQSpec not found. Ensure spec.js is loaded." });
-
-    ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips || [];
-    ctx.state.ui.specAnswers.stageOverrides = ctx.state.ui.specAnswers.stageOverrides || {};
-
-    if (ctx.state.ui.specScreen === 0) return renderWizardScreen0(specApi);
-    if (ctx.state.ui.specScreen === 1) return renderWizardScreen1(specApi);
-    if (ctx.state.ui.specScreen === 2) return renderWizardScreen2(specApi);
-    return el("div", { text: "Unknown screen" });
-  }
-
-
   async function loadUserTemplates() {
     return new Promise(resolve => {
       chrome.storage.local.get("aisqTemplates", (res) => {
@@ -361,318 +543,6 @@
     });
   }
 
-  function renderWizardScreen0(specApi) {
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => { ctx.state.ui.specAnswers.name = e.target.value; } } });
-    const descInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => { ctx.state.ui.specAnswers.description = e.target.value; } } });
-    
-    // Quick Starts
-    const quickStartCards = specApi.BUILT_IN_TEMPLATES.map(t => {
-      const card = el("button", { 
-        style: "display: flex; flex-direction: column; align-items: flex-start; padding: 8px; border: 1px solid #ccc; border-radius: 6px; background: #fafafa; min-width: 140px; cursor: pointer; text-align: left;",
-        on: { click: () => {
-          ctx.mutate(() => { 
-            ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
-            ctx.state.ui.specScreen = 2; // Jump to preview
-          });
-          ctx.requestRender();
-        }}
-      }, [
-        el("div", { style: "font-size: 20px; margin-bottom: 4px;", text: t.icon }),
-        el("div", { style: "font-weight: 500; font-size: 13px;", text: t.name }),
-        el("div", { style: "font-size: 11px; color: #666; margin-top: 2px;", text: t.scale })
-      ]);
-      return card;
-    });
-    
-    const quickStartRow = el("div", { style: "display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px;" }, quickStartCards);
-    
-    // My Templates
-    const myTemplatesContainer = el("div", { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 8px;" });
-    
-    const renderMyTemplates = async () => {
-      const templates = await loadUserTemplates();
-      myTemplatesContainer.innerHTML = "";
-      
-      if (templates.length === 0) {
-        myTemplatesContainer.appendChild(el("div", { style: "font-size: 12px; color: #888; font-style: italic;", text: "No saved templates yet." }));
-        return;
-      }
-      
-      templates.forEach(t => {
-        const row = el("div", { style: "display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: #fff; border: 1px solid #ddd; border-radius: 4px;" }, [
-          el("span", { style: "font-size: 13px; font-weight: 500;", text: t.name }),
-          el("div", { style: "display: flex; gap: 4px;" }, [
-            button("Use", () => {
-              ctx.mutate(() => { 
-                ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
-                ctx.state.ui.specScreen = 2;
-              });
-              ctx.requestRender();
-            }, "ghost"),
-            button("Export", () => {
-              const json = specApi.serializeTemplate(t.answers);
-              const blob = new Blob([json], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${t.name.replace(/\s+/g, '-').toLowerCase()}-template.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }, "ghost"),
-            (() => {
-              const b = button("×", async () => {
-                await deleteUserTemplate(t.id);
-                renderMyTemplates();
-              }, "ghost", "Delete template");
-              b.style.color = "red";
-              return b;
-            })()
-          ])
-        ]);
-        myTemplatesContainer.appendChild(row);
-      });
-    };
-    renderMyTemplates();
-
-    // Import
-    const importContainer = el("div", { style: "margin-top: 8px; padding: 8px; background: #f0f0f0; border-radius: 4px;" }, [
-      el("div", { style: "font-size: 12px; font-weight: 500; margin-bottom: 4px;", text: "Import Template (JSON)" }),
-      el("input", { type: "file", accept: ".json", style: "font-size: 11px;", on: { change: e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const parsed = specApi.deserializeTemplate(event.target.result);
-          if (parsed) {
-            ctx.mutate(() => { 
-              ctx.state.ui.specAnswers = parsed;
-              ctx.state.ui.specScreen = 2;
-            });
-            ctx.requestRender();
-          } else {
-            alert("Invalid template JSON file.");
-          }
-        };
-        reader.readAsText(file);
-      }}})
-    ]);
-
-    const archetypeGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, 
-      Object.entries(specApi.ARCHETYPES).map(([key, info]) => 
-        button(`${info.emoji} ${info.label}`, () => { ctx.mutate(() => { ctx.state.ui.specAnswers.archetype = key; ctx.requestRender(); }); }, ctx.state.ui.specAnswers.archetype === key ? "primary" : "ghost")
-      )
-    );
-
-    const scaleGrid = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" },
-      specApi.SCALES.map(scale => 
-        el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;" }, [
-          el("input", { type: "radio", name: "spec-scale", checked: ctx.state.ui.specAnswers.scale === scale, on: { change: () => { ctx.mutate(() => { ctx.state.ui.specAnswers.scale = scale; ctx.requestRender(); }); } } }),
-          el("span", { text: scale.charAt(0).toUpperCase() + scale.slice(1) })
-        ])
-      )
-    );
-
-    const nextBtn = button("Next", () => {
-      ctx.mutate(() => { ctx.state.ui.specScreen = 1; ctx.requestRender(); });
-    }, "primary");
-
-    return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
-      field("Quick Starts", quickStartRow),
-      field("Name", nameInput),
-      field("Description", descInput),
-      field("App Type", archetypeGrid),
-      field("Scale", scaleGrid),
-      el("details", { style: "font-size: 13px;" }, [
-        el("summary", { style: "cursor: pointer; font-weight: 500;", text: "My Saved Templates" }),
-        myTemplatesContainer,
-        importContainer
-      ]),
-      el("div", { className: "aisq-actions" }, [nextBtn])
-    ]);
-  }
-
-  function renderWizardScreen1(specApi) {
-    const inferred = specApi.inferDefaults(ctx.state.ui.specAnswers);
-    const visible = specApi.getVisibleSections(inferred);
-    
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => { ctx.state.ui.specAnswers.features = e.target.value; } } });
-    const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
-    const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
-      const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
-      return el("button", { text: (isSelected ? "✓ " : "+ ") + s, style: `font-size: 11px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; background: ${isSelected ? '#e0f0ff' : 'transparent'}; cursor: pointer;`, on: { click: () => {
-        ctx.mutate(() => {
-          if (isSelected) {
-            ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips.filter(x => x !== s);
-          } else {
-            ctx.state.ui.specAnswers.featureChips.push(s);
-          }
-        });
-        ctx.requestRender();
-      }} });
-    }));
-
-    // Design
-    const genreSelect = el("select", { className: "aisq-select" }, [el("option", { value: "", text: "-- Select Genre --" }), ...Object.entries(specApi.GENRES).map(([id, info]) => el("option", { value: id, text: info.label, selected: inferred.genre === id }))]);
-    genreSelect.addEventListener("change", e => { ctx.mutate(() => { ctx.state.ui.specAnswers.genre = e.target.value; }); ctx.requestRender(); });
-    
-    const mkCheckbox = (label, key) => el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;" }, [
-      el("input", { type: "checkbox", checked: !!ctx.state.ui.specAnswers[key], on: { change: e => { ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.checked }); ctx.requestRender(); } } }),
-      el("span", { text: label })
-    ]);
-    const designOptions = el("div", { style: "display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px;" }, [
-      mkCheckbox("Mobile First", "mobileFirst"), mkCheckbox("Dark Mode", "darkMode"), mkCheckbox("Prod Quality", "productionQuality")
-    ]);
-
-    // Screens
-    const screensValue = Array.isArray(ctx.state.ui.specAnswers.screens) ? ctx.state.ui.specAnswers.screens.join(", ") : (ctx.state.ui.specAnswers.screens || "");
-    const screensInput = el("input", { className: "aisq-input", value: screensValue, placeholder: "Home, Login, Dashboard", on: { change: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.screens = e.target.value.split(",").map(x => x.trim()).filter(Boolean) }); ctx.requestRender(); } } });
-
-    const fields = [
-      field("Core Features", el("div", {}, [featureText, suggestionChips])),
-      field("Design", el("div", {}, [genreSelect, designOptions])),
-      field("Screens", screensInput)
-    ];
-
-    if (visible.techStack) {
-      const mkTechSelect = (label, key, options) => {
-        const sel = el("select", { className: "aisq-select" }, [el("option", { value: "", text: `-- Select ${label} --` }), ...options.map(o => el("option", { value: o, text: o, selected: inferred[key] === o }))]);
-        sel.addEventListener("change", e => { ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value }); ctx.requestRender(); });
-        return field(label, sel);
-      };
-      fields.push(el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, [
-        mkTechSelect("Frontend", "frontend", ["React", "Vue", "Svelte", "Vanilla JS", "Next.js 14 App Router", "Next.js", "Astro", "React Native", "Angular", "None"]),
-        mkTechSelect("Backend", "backend", ["Node.js", "Node.js + Express", "Python", "Python + FastAPI", "Go", "Firebase", "Supabase", "Next.js API Routes", "Node.js + NestJS", "Java Spring Boot", "None"]),
-        mkTechSelect("Database", "database", ["PostgreSQL", "PostgreSQL (Supabase)", "PostgreSQL (pgvector)", "MongoDB", "MySQL", "Redis", "Firestore", "None"]),
-        mkTechSelect("Hosting", "hosting", ["Vercel", "Netlify", "AWS", "Render", "App Stores", "GitHub Pages"])
-      ]));
-      fields.push(field("Industry (optional)", el("input", {
-        className: "aisq-input",
-        value: ctx.state.ui.specAnswers.industry || "",
-        placeholder: "e.g. Healthcare, Fintech, Education",
-        on: { input: e => { ctx.state.ui.specAnswers.industry = e.target.value; } }
-      })));
-    }
-
-    if (visible.security) {
-      fields.push(field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption", on: { input: e => { ctx.state.ui.specAnswers.security = e.target.value; } } })));
-    }
-
-    return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
-      ...fields,
-      el("div", { className: "aisq-actions" }, [
-        button("Back", () => { ctx.mutate(() => { ctx.state.ui.specScreen = 0; ctx.requestRender(); }); }, "ghost"),
-        button("Preview", () => { ctx.mutate(() => { ctx.state.ui.specScreen = 2; ctx.requestRender(); }); }, "primary")
-      ])
-    ]);
-  }
-
-  function renderWizardScreen2(specApi) {
-    const inferred = specApi.inferDefaults(ctx.state.ui.specAnswers);
-    const stages = specApi.resolveStages(inferred);
-    const overrides = ctx.state.ui.specAnswers.stageOverrides;
-    const result = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-    
-    if (ctx.state.ui.specRawView === undefined) ctx.state.ui.specRawView = false;
-    
-    const summary = el("p", { className: "aisq-copy", text: `${result.stageCount} stages, ~${result.charCount} characters` });
-    const prefaceEl = el("pre", { style: "white-space: pre-wrap; font-size: 11px; background: #f0f0f0; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;", text: result.preface });
-    
-    const stageCards = stages.map((s, i) => {
-      const isEnabled = overrides[s.id] !== undefined ? overrides[s.id] : s.enabled;
-      
-      const toggle = el("input", { type: "checkbox", checked: isEnabled, disabled: s.required });
-      toggle.addEventListener("change", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers.stageOverrides[s.id] = e.target.checked; });
-        ctx.requestRender();
-      });
-      
-      const header = el("summary", { style: "cursor: pointer; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px;" }, [
-        toggle,
-        el("span", { text: `Stage ${i + 1}: ${s.title}` })
-      ]);
-      
-      const previewText = s.builder(inferred).trim().substring(0, 150) + "...";
-      const body = el("div", { style: "padding: 8px; font-size: 11px; background: #f9f9f9; border-top: 1px solid #eee; white-space: pre-wrap;", text: previewText });
-      
-      return el("details", { style: "border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; margin-bottom: 4px;" }, [header, body]);
-    });
-
-    const rawToggle = el("label", { style: "display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-bottom:8px;" }, [
-      el("input", { type: "checkbox", checked: ctx.state.ui.specRawView, on: { change: e => {
-        ctx.mutate(() => { ctx.state.ui.specRawView = e.target.checked; });
-        ctx.requestRender();
-      }}}),
-      el("span", { text: "View Raw Text" })
-    ]);
-
-    const stagesOrRaw = ctx.state.ui.specRawView
-      ? el("div", {}, [
-          rawToggle,
-          button("Copy to Clipboard", () => navigator.clipboard.writeText(result.preface + "\n\n" + result.raw), "ghost"),
-          el("pre", { style: "white-space:pre-wrap;font-size:11px;background:#f0f0f0;padding:8px;border-radius:4px;max-height:300px;overflow-y:auto;margin-top:8px;", text: result.preface + "\n\n" + result.raw })
-        ])
-      : el("div", {}, [rawToggle, ...stageCards]);
-
-    const submit = () => {
-      const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
-      if (commandResult.ok) {
-        ctx.mutate(() => { ctx.state.ui.specMode = "paste"; ctx.state.ui.specScreen = 0; ctx.state.ui.specAnswers = {}; });
-        ctx.requestRender();
-      } else {
-        alert("Error: " + commandResult.error);
-      }
-    };
-    
-    const submitAndStart = () => {
-      const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
-      if (commandResult.ok) {
-        ctx.mutate(() => { 
-          ctx.state.ui.specMode = "paste"; 
-          ctx.state.ui.specScreen = 0; 
-          ctx.state.ui.specAnswers = {}; 
-          ctx.state.settings.activeTab = "prompts";
-          ctx.state.uiIntent = { action: 'start', scope: 'stack' };
-        });
-        ctx.requestRender();
-      } else {
-        alert("Error: " + commandResult.error);
-      }
-    };
-
-    let saveMode = false;
-    const saveNameInput = el("input", { className: "aisq-input", placeholder: "Template name...", style: "display:none;width:140px;" });
-    const saveBtn = button("Save as Template", async () => {
-      if (!saveMode) {
-        saveMode = true;
-        saveNameInput.style.display = "";
-        saveNameInput.focus();
-      } else {
-        const name = saveNameInput.value.trim();
-        if (name) {
-          await saveUserTemplate(name, ctx.state.ui.specAnswers);
-          saveNameInput.value = "";
-          saveNameInput.style.display = "none";
-          saveMode = false;
-          saveBtn.textContent = "✓ Saved!";
-          setTimeout(() => { saveBtn.textContent = "Save as Template"; }, 2000);
-        }
-      }
-    }, "ghost");
-
-    return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
-      field("Summary", summary),
-      field("Preface", prefaceEl),
-      field("Stages", stagesOrRaw),
-      el("div", { style: "display: flex; justify-content: flex-end; align-items: center; gap: 8px;" }, [saveNameInput, saveBtn]),
-      el("div", { className: "aisq-actions" }, [
-        button("Back", () => { ctx.mutate(() => { ctx.state.ui.specScreen = 1; ctx.requestRender(); }); }, "ghost"),
-        button("Add to Queue", submit, "ghost"),
-        button("Generate & Start ▶", submitAndStart, "primary")
-      ])
-    ]);
-  }
   function chainCard(chain, index) {
     const counts = Core.chainCounts(chain);
     let status = counts.pending ? "running" : counts.queued === 0 ? "done" : "queued";
@@ -783,7 +653,7 @@
       stack.append(el("div", { className: "aisq-help", text: "Stored but removed from stack" }));
       stored.forEach((candidate, index) => stack.append(chainCard(candidate, (ctx.state.stackOrder || []).length + index)));
     }
-    wrap.append(el("div", { className: "aisq-stack-title" }, [el("strong", { text: "Execution stack" }), el("span", { className: "aisq-copy", text: `${(ctx.state.stackOrder || []).length} chain(s)` })]), stack);
+    wrap.append(el("div", { className: "aisq-stack-title" }, [el("strong", { text: "Execution Queue" }), el("span", { className: "aisq-copy", text: `${(ctx.state.stackOrder || []).length} chain(s)` })]), stack);
     return wrap;
   }
 
@@ -821,7 +691,7 @@
     const prefaceEditor = el("textarea", { 
       className: "aisq-prompt-editor aisq-preface-editor", 
       value: chain.preface || "",
-      placeholder: "Type a shared intro / preface here to prepend to your prompts before execution..."
+      placeholder: "Type a shared intro / system context here to prepend to your prompts before execution..."
     });
     prefaceEditor.addEventListener("change", () => ctx.command("EDIT_PREFACE", { chainId: chain.id, text: prefaceEditor.value }));
     prefaceEditor.addEventListener("input", () => {
@@ -835,8 +705,8 @@
       allIncluded ? "ghost aisq-preface-on" : "ghost"
     );
     includeAllToggle.title = allIncluded 
-      ? "Preface is currently enabled on all prompts in this chain. Click to exclude from all." 
-      : "Click to enable preface on all prompts in this chain.";
+      ? "System Context is currently enabled on all prompts in this chain. Click to exclude from all." 
+      : "Click to enable System Context on all prompts in this chain.";
 
     const prefaceBadge = el("span", { 
       className: `aisq-preface-badge ${hasPreface ? "" : "empty"}`, 
@@ -846,17 +716,17 @@
     const extractIntroBtn = !hasPreface
       ? button("⚡ Extract Intro", () => {
           ctx.command("EXTRACT_CHAIN_PREFACE", { chainId: chain.id });
-        }, "ghost aisq-btn-extract", "Auto-extract shared intro from prompts into Preface")
+        }, "ghost aisq-btn-extract", "Auto-extract shared intro from prompts into System Context")
       : null;
 
     const clearPreface = hasPreface
       ? button("Clear", () => {
-          if (confirm("Clear preface text for this chain?")) ctx.command("EDIT_PREFACE", { chainId: chain.id, text: "" });
+          if (confirm("Clear System Context text for this chain?")) ctx.command("EDIT_PREFACE", { chainId: chain.id, text: "" });
         }, "danger ghost")
       : null;
 
     const prefaceSummary = el("summary", { className: "aisq-prompt-head aisq-preface-head" }, [
-      el("strong", { text: "Preface (Intro)" }),
+      el("strong", { text: "System Context (Intro)" }),
       prefaceBadge,
       ...(extractIntroBtn ? [extractIntroBtn] : []),
       includeAllToggle,
@@ -885,8 +755,8 @@
         !hasPreface ? "ghost aisq-preface-disabled" : (isIntroActive ? "ghost aisq-preface-on" : "ghost aisq-preface-off")
       );
       togglePreface.title = !hasPreface 
-        ? "No preface configured in Preface (Intro) above." 
-        : (isIntroActive ? "Preface is currently prepended to this prompt. Click to turn off." : "Preface is excluded from this prompt. Click to turn on.");
+        ? "No text configured in System Context (Intro) above." 
+        : (isIntroActive ? "System Context is currently prepended to this prompt. Click to turn off." : "System Context is excluded from this prompt. Click to turn on.");
       controls.unshift(togglePreface);
       
       const runNext = button("Run Next", () => ctx.command("REORDER_TO_NEXT", { chainId: chain.id, promptId: prompt.id }), "ghost");
@@ -983,12 +853,18 @@
     const addPromptText = el("input", { className: "aisq-input", placeholder: "New prompt text" });
     const addPrompt = () => { const result = ctx.command("ADD_PROMPT", { chainId: chain.id, text: addPromptText.value }); if (result.ok) addPromptText.value = ""; };
     const deleteChain = button("Delete chain", () => {
-      if (confirm(`Delete ${chain.name}? This removes its prompts.`)) ctx.command("DELETE_CHAIN", { chainId: chain.id }, { history: { kind: "chain_deleted", message: `Deleted ${chain.name}` } });
+      if (confirm(`Delete ${chain.name}? This removes its prompts.`)) {
+        const res = ctx.command("DELETE_CHAIN", { chainId: chain.id }, { history: { kind: "chain_deleted", message: `Deleted ${chain.name}` } });
+        if (res.ok) ctx.toast(`🗑 Deleted "${chain.name}"`, "info");
+      }
     }, "danger ghost");
-    const duplicate = button("Duplicate chain", () => ctx.command("DUPLICATE_CHAIN", { chainId: chain.id }, { history: { kind: "chain_duplicated", message: `Duplicated ${chain.name}` } }), "ghost");
+    const duplicate = button("Duplicate chain", () => {
+      const res = ctx.command("DUPLICATE_CHAIN", { chainId: chain.id }, { history: { kind: "chain_duplicated", message: `Duplicated ${chain.name}` } });
+      if (res.ok) ctx.toast(`✅ Duplicated "${chain.name}"`, "success");
+    }, "ghost");
     const extractPrefaceBtn = button("Extract shared intro", () => {
       ctx.command("EXTRACT_CHAIN_PREFACE", { chainId: chain.id });
-    }, "ghost", "Detect and extract repeating intro text from prompts into Preface (Intro)");
+    }, "ghost", "Detect and extract repeating intro text from prompts into System Context (Intro)");
     const skip = button("Skip chain", () => ctx.command("SKIP_CHAIN", { chainId: chain.id }, { history: { kind: "chain_skipped", message: `Skipped ${chain.name}` } }), "ghost");
     wrap.append(list, field("Add prompt", addPromptText), el("div", { className: "aisq-actions" }, [button("Add prompt", addPrompt, "primary"), duplicate, extractPrefaceBtn, skip, button("Reset chain", ctx.resetSelectedChain, "ghost"), deleteChain]));
     return wrap;
