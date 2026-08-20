@@ -508,9 +508,7 @@
       el("details", { style: "margin-top: 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px;" }, [
         el("summary", { style: "cursor: pointer; font-weight: 600; outline: none;", text: "Review Stages & Text" }),
         el("div", { style: "margin-top: 12px;" }, stageCards),
-        el("pre", { style: "white-space: pre-wrap; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; max-height: 200px; overflow: auto; margin-top: 12px;", text: result.preface + "
-
-" + result.raw })
+        el("pre", { style: "white-space: pre-wrap; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; max-height: 200px; overflow: auto; margin-top: 12px;", text: result.preface + "\n\n" + result.raw })
       ]),
 
       el("div", { className: "aisq-actions", style: "margin-top: 16px;" }, [
