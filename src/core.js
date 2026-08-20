@@ -559,6 +559,26 @@
       state.selectedChainId = imported.id;
       state.ui.lastImportId = imported.id;
       result.value = imported;
+
+    } else if (type === "IMPORT_CHAIN_FROM_PROJECT") {
+      const sourceProject = state.projects[payload.sourceProjectKey];
+      const sourceChain = sourceProject?.chains?.find(c => c.id === payload.chainId);
+      if (!sourceChain) return reject("Source chain not found");
+      
+      const copy = makeChain(
+        sourceChain.name,
+        sourceChain.prompts.map(p => ({
+          ...p, id: uid("prompt"), status: "queued",
+          attempts: 0, submittedAt: null, completedAt: null, error: null
+        })),
+        sourceChain.source.raw,
+        { ...sourceChain.source, preface: sourceChain.preface }
+      );
+      state.chains.push(copy);
+      ensureStackOrder(state);
+      state.selectedChainId = copy.id;
+      state.ui.lastImportId = copy.id;
+      result.value = copy;
     } else if (type === "SELECT_CHAIN") {
       if (!getChainById(state, payload.chainId)) return reject("Chain not found");
       state.selectedChainId = payload.chainId;

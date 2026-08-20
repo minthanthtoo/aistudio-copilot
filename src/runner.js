@@ -217,7 +217,7 @@ try {
   async function finishSubmission(host) {
     const prompt = ctx.runnerPrompt();
     if (!prompt) return markPromptError("Pending prompt could not be found");
-    const chain = ctx.state.chains.find((c) => c.id === ctx.state.runner.activeChainId);
+    const chain = (ctx.state.chains || []).find((c) => c.id === ctx.state.runner.activeChainId);
     const fullText = getPromptFullText(chain, prompt);
     if (!host.textarea || (!host.submit && host.mode === "editor")) {
       if (Date.now() - Number(ctx.state.runner.submittedAt || 0) > ctx.state.settings.startTimeoutMs) markPromptError("AI Studio composer disappeared before submission");

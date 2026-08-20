@@ -37,16 +37,22 @@
   function importText(raw, strategy = ctx.state.ui.splitStrategy, options = {}) {
     const result = Core.parsePromptPack(raw, strategy);
     if (!result.prompts.length) return { ok: false, error: "Nothing to import" };
-    const number = ctx.state.chains.length + 1;
+    const number = (ctx.state.chains || []).length + 1;
     const chain = Core.makeChain(options.name || `Chain ${number}`, result.prompts, raw, { splitStrategy: result.strategy, pastedAt: Core.nowISO(), preface: options.preface || result.preface });
     const placement = options.placement || ctx.state.settings.pastePlacement;
     const commandResult = ctx.command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? ctx.state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${result.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: result.strategy } } });
+
     if (commandResult.ok) {
       ctx.state.ui.draft = "";
       ctx.state.ui.detectedStrategy = result.strategy;
       const draftControl = ctx.shadow?.querySelector(".aisq-draft");
       if (draftControl) draftControl.value = "";
+      
+      // Auto-switch to stack tab so the user sees it worked
+      ctx.state.settings.activeTab = "stack";
+      
       const stackMeter = ctx.shadow?.getElementById("aisq-stack-meter");
+
       if (stackMeter) {
         const counts = Core.stackCounts(ctx.state);
         stackMeter.textContent = `Stack now: ${counts.chains} chain(s) · ${counts.prompts} prompt(s) · ${counts.queued} queued`;
@@ -57,6 +63,47 @@
     }
     return commandResult;
   }
+
+  
+  function renderCrossProjectImport() {
+    const otherProjects = Core.getAllProjects(ctx.state).filter(p => p.key !== Core.getCurrentPageKey() && p.chains?.length);
+    
+    const importWrap = el("div", { style: "margin-top: 16px; padding: 12px; background: rgba(115, 87, 255, 0.05); border: 1px dashed rgba(115, 87, 255, 0.3); border-radius: 8px; display: flex; flex-direction: column; gap: 8px;" }, [
+      el("strong", { text: "Import chains from another project", style: "font-size: 12px; color: #a78bfa;" })
+    ]);
+    
+    if (!otherProjects.length) {
+      importWrap.append(el("div", { style: "font-size: 11px; color: #666;", text: "No other populated projects found in this browser." }));
+      return importWrap;
+    }
+
+    const select = el("select", { className: "aisq-select" }, [el("option", { text: "-- Select a chain to copy --", value: "" })]);
+    const btn = button("Import Chain", () => {
+      if (!select.value) return;
+      const [sourceProjectKey, chainId] = select.value.split("|");
+      ctx.command("IMPORT_CHAIN_FROM_PROJECT", { sourceProjectKey, chainId });
+      select.value = "";
+      ctx.mutate(() => { ctx.state.settings.activeTab = "stack"; });
+    }, "primary");
+    btn.disabled = true;
+
+    otherProjects.forEach(p => {
+      const optgroup = el("optgroup", { label: p.key.replace("app:", "App: ").replace("prompt:", "Prompt: ") });
+      p.chains?.forEach(c => {
+        const option = el("option", { value: `${p.key}|${c.id}`, text: `${c.name} (${c.prompts.length} prompts)` });
+        optgroup.append(option);
+      });
+      select.append(optgroup);
+    });
+    
+    select.addEventListener("change", () => {
+      btn.disabled = !select.value;
+    });
+
+    importWrap.append(el("div", { style: "display: flex; gap: 8px;" }, [select, btn]));
+    return importWrap;
+  }
+
 
   function renderBuild() {
     ctx.state.ui.specMode = ctx.state.ui.specMode || "paste";
@@ -78,7 +125,7 @@
       content = renderImportMode();
     }
 
-    return el("div", { className: "aisq-section" }, [modeToggle, content]);
+        return el("div", { className: "aisq-section" }, [modeToggle, content]);
   }
 
   function renderPasteMode() {
@@ -151,7 +198,14 @@
         style: "min-height: 80px;",
         value: ctx.state.ui.importSource,
         placeholder: "Paste ChatGPT share URL, or raw HTML/JSON here...",
-        on: { input: e => { ctx.state.ui.importSource = e.target.value; ctx.requestRender(); } }
+                on: { input: e => { 
+          ctx.state.ui.importSource = e.target.value;
+          const btn = e.target.parentElement?.parentElement?.querySelector("button");
+          if (btn) {
+            btn.disabled = !e.target.value.trim();
+            btn.className = `aisq-btn ${e.target.value.trim() ? "primary" : "ghost"}`;
+          }
+        } }
       });
 
       const analyzeBtn = button("Fetch & Analyze", async () => {
@@ -204,13 +258,22 @@
       }, ctx.state.ui.importSource ? "primary" : "ghost");
       if (!ctx.state.ui.importSource) analyzeBtn.disabled = true;
 
-      return el("div", {}, [
+      const children = [
         el("p", { className: "aisq-copy", text: "Import an existing ChatGPT brainstorming session. We'll extract the tech stack and core features automatically." }),
         field("Chat Source", intake),
         ctx.state.ui.importState === "error" ? el("div", { style: "color: red; font-size: 11px; margin-bottom: 8px;" }, [el("strong", { text: "Error: " }), document.createTextNode(ctx.state.ui.importStatusText)]) : null,
         el("div", { className: "aisq-actions" }, [analyzeBtn])
-      ]);
+      ].filter(Boolean);
+      
+      const crossImport = renderCrossProjectImport();
+      if (crossImport) {
+        children.push(el("hr", { style: "margin: 16px 0; border: none; border-top: 1px solid rgba(115,87,255,0.2);" }));
+        children.push(crossImport);
+      }
+      
+      return el("div", {}, children);
     }
+
 
     if (ctx.state.ui.importState === "fetching" || ctx.state.ui.importState === "extracting") {
       return el("div", { style: "text-align: center; padding: 24px;" }, [
@@ -299,8 +362,8 @@
   }
 
   function renderWizardScreen0(specApi) {
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.name = e.target.value }); } } });
-    const descInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.description = e.target.value }); } } });
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => { ctx.state.ui.specAnswers.name = e.target.value; } } });
+    const descInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => { ctx.state.ui.specAnswers.description = e.target.value; } } });
     
     // Quick Starts
     const quickStartCards = specApi.BUILT_IN_TEMPLATES.map(t => {
@@ -432,7 +495,7 @@
     const inferred = specApi.inferDefaults(ctx.state.ui.specAnswers);
     const visible = specApi.getVisibleSections(inferred);
     
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.features = e.target.value }); } } });
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => { ctx.state.ui.specAnswers.features = e.target.value; } } });
     const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
     const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
       const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
@@ -486,12 +549,12 @@
         className: "aisq-input",
         value: ctx.state.ui.specAnswers.industry || "",
         placeholder: "e.g. Healthcare, Fintech, Education",
-        on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.industry = e.target.value }); } }
+        on: { input: e => { ctx.state.ui.specAnswers.industry = e.target.value; } }
       })));
     }
 
     if (visible.security) {
-      fields.push(field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.security = e.target.value }); } } })));
+      fields.push(field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption", on: { input: e => { ctx.state.ui.specAnswers.security = e.target.value; } } })));
     }
 
     return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
@@ -653,7 +716,7 @@
       upBtn,
       downBtn,
       bottomBtn,
-      button(ctx.state.stackOrder.includes(chain.id) ? "–" : "+", () => ctx.command(ctx.state.stackOrder.includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", ctx.state.stackOrder.includes(chain.id) ? `Suspend ${chain.name}` : `Add ${chain.name} to stack`),
+      button((ctx.state.stackOrder || []).includes(chain.id) ? "–" : "+", () => ctx.command((ctx.state.stackOrder || []).includes(chain.id) ? "REMOVE_CHAIN_FROM_STACK" : "ADD_CHAIN_TO_STACK", { chainId: chain.id }), "ghost", (ctx.state.stackOrder || []).includes(chain.id) ? `Suspend ${chain.name}` : `Add ${chain.name} to stack`),
       button("✕", () => ctx.command("DELETE_CHAIN", { chainId: chain.id }), "danger ghost", `Delete ${chain.name}`)
     ]);
     
@@ -707,27 +770,27 @@
   function renderStack() {
     const wrap = el("div", { className: "aisq-section" });
     const stack = el("div", { className: "aisq-stack-list" });
-    if (!ctx.state.chains.length) {
+    if (!ctx.state.chains || !ctx.state.chains.length) {
       wrap.append(el("p", { className: "aisq-copy", text: "No chains yet. Paste a prompt pack in Build." }));
       return wrap;
     }
-    for (const [index, id] of ctx.state.stackOrder.entries()) {
+    for (const [index, id] of (ctx.state.stackOrder || []).entries()) {
       const candidate = Core.getChainById(ctx.state, id);
       if (candidate) stack.append(chainCard(candidate, index));
     }
-    const stored = ctx.state.chains.filter((candidate) => !ctx.state.stackOrder.includes(candidate.id));
+    const stored = (ctx.state.chains || []).filter((candidate) => !(ctx.state.stackOrder || []).includes(candidate.id));
     if (stored.length) {
       stack.append(el("div", { className: "aisq-help", text: "Stored but removed from stack" }));
-      stored.forEach((candidate, index) => stack.append(chainCard(candidate, ctx.state.stackOrder.length + index)));
+      stored.forEach((candidate, index) => stack.append(chainCard(candidate, (ctx.state.stackOrder || []).length + index)));
     }
-    wrap.append(el("div", { className: "aisq-stack-title" }, [el("strong", { text: "Execution stack" }), el("span", { className: "aisq-copy", text: `${ctx.state.stackOrder.length} chain(s)` })]), stack);
+    wrap.append(el("div", { className: "aisq-stack-title" }, [el("strong", { text: "Execution stack" }), el("span", { className: "aisq-copy", text: `${(ctx.state.stackOrder || []).length} chain(s)` })]), stack);
     return wrap;
   }
 
   function renderPrompts() {
     const chain = ctx.selectedChain();
     const wrap = el("div", { className: "aisq-section" });
-    if (!ctx.state.chains.length) {
+    if (!ctx.state.chains || !ctx.state.chains.length) {
       wrap.append(el("p", { className: "aisq-copy", text: "No chains yet. Paste a prompt pack in Build." }));
       return wrap;
     }
@@ -737,7 +800,7 @@
     }
 
     const select = el("select", { className: "aisq-select" });
-    ctx.state.chains.forEach((candidate) => {
+    (ctx.state.chains || []).forEach((candidate) => {
       const option = el("option", { value: candidate.id, text: `${candidate.name} (${candidate.prompts.length})` });
       option.selected = candidate.id === ctx.state.selectedChainId;
       select.append(option);
