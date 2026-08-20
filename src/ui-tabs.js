@@ -44,7 +44,7 @@
     if (options.preface) chain.preface = options.preface;
     chain.prompts = parsed.prompts.map(p => Core.makePrompt(p));
     
-    const placement = ctx.state.settings.insertAtBottom ? "bottom" : "after";
+    const placement = ctx.state.settings.pastePlacement === "end" ? "bottom" : "after";
     const commandResult = ctx.command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? ctx.state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${parsed.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: parsed.strategy } } });
     
     if (commandResult.ok) {
@@ -208,14 +208,30 @@
              e.preventDefault();
              if (detectType === "prompts") {
                 const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-                if (res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); }
+                if (res.ok) { 
+                  ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); 
+                  if (e.shiftKey) void ctx.startRunner();
+                }
              } else if (detectType === "natural") {
+                startWizardWithDescription(val);
+             }
+          }
+        }
+      } else if (detectType === "natural") {
                 startWizardWithDescription(ctx.state.ui.draft);
              }
           }
         }
       }
     });
+
+
+    let badge = null;
+    if (detectType && detectType !== "empty") {
+      const typeLabels = { chatgpt: "ChatGPT URL", json: "JSON Template", prompts: "Prompts", natural: "App Description" };
+      badge = el("div", { className: "aisq-detect-badge", text: typeLabels[detectType] });
+    }
+    const inputWrapper = el("div", { style: "position: relative; width: 100%;" }, [draft, badge].filter(Boolean));
 
     let actionArea = el("div", { className: "aisq-actions", style: "margin-top: 8px;" });
     
@@ -320,7 +336,7 @@
 
     }
 
-    return el("div", { style: "position: relative;" }, [draft, actionArea]);
+    return el("div", { style: "position: relative;" }, [inputWrapper, actionArea]);
   }
 
   function renderAdvancedSection() {
@@ -355,6 +371,76 @@
       details.append(
         field("Detection mode Override", strategy),
         el("div", { style: "margin-top: 12px;" }, [openWizardBtn]),
+        
+      const myTemplatesContainer = el("div", { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;" });
+      myTemplatesContainer.append(el("strong", { text: "My Saved Templates", style: "font-size: 12px; color: #a9a6b4;" }));
+      
+      const renderMyTemplates = async () => {
+        const templates = await loadUserTemplates();
+        while (myTemplatesContainer.children.length > 1) {
+          myTemplatesContainer.removeChild(myTemplatesContainer.lastChild);
+        }
+        
+        if (templates.length === 0) {
+          myTemplatesContainer.appendChild(el("div", { style: "font-size: 11px; color: #666; font-style: italic;", text: "No saved templates yet." }));
+        } else {
+          templates.forEach(t => {
+            const row = el("div", { style: "display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: #2a2930; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;" }, [
+              el("span", { style: "font-size: 12px; font-weight: 500;", text: t.name }),
+              el("div", { style: "display: flex; gap: 4px;" }, [
+                button("Use", () => {
+                  ctx.mutate(() => { 
+                    ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
+                    ctx.state.ui.buildView = "wizard_details";
+                  });
+                  ctx.requestRender();
+                }, "ghost"),
+                button("Export", () => {
+                  const json = globalThis.AISQSpec.serializeTemplate(t.answers);
+                  const blob = new Blob([json], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${t.name.replace(/\s+/g, '-').toLowerCase()}-template.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }, "ghost"),
+                button("×", async () => {
+                  await deleteUserTemplate(t.id);
+                  renderMyTemplates();
+                }, "ghost", "Delete template")
+              ])
+            ]);
+            myTemplatesContainer.appendChild(row);
+          });
+        }
+
+        const importRow = el("div", { style: "margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;" }, [
+          el("div", { style: "font-size: 11px; margin-bottom: 4px;", text: "Import Template (JSON)" }),
+          el("input", { type: "file", accept: ".json", style: "font-size: 11px;", on: { change: e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const parsed = globalThis.AISQSpec.deserializeTemplate(event.target.result);
+              if (parsed) {
+                ctx.mutate(() => { 
+                  ctx.state.ui.specAnswers = parsed;
+                  ctx.state.ui.buildView = "wizard_details";
+                });
+                ctx.requestRender();
+              } else {
+                ctx.toast("Invalid template JSON file.", "error");
+              }
+            };
+            reader.readAsText(file);
+          }}})
+        ]);
+        myTemplatesContainer.appendChild(importRow);
+      };
+      renderMyTemplates();
+
+        myTemplatesContainer,
         renderCrossProjectImport()
       );
     }
@@ -384,10 +470,10 @@
       el("div", { style: "font-size: 11px; color: #9995a5;" }, [document.createTextNode(stackSummary)])
     ]);
 
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAndStart(); } }, input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); } } });
-    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAndStart(); } }, input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); } } });
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); } } });
+    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); } } });
     
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAndStart(); } }, input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); } } });
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); } } });
     const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
     const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
       const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
@@ -480,14 +566,46 @@
       field("Description", descInput),
       field("Features", el("div", {}, [featureText, suggestionChips])),
       techStackFields ? field("Tech Stack", techStackFields) : null,
+      (visible.audience ? field("Target Audience", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.audience || "", placeholder: "e.g. Developers, Small Business Owners", on: { input: e => { ctx.state.ui.specAnswers.audience = e.target.value; } } })) : null),
+      (visible.industry ? field("Industry / Domain", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.industry || "", placeholder: "e.g. Healthcare, Fintech, Education", on: { input: e => { ctx.state.ui.specAnswers.industry = e.target.value; } } })) : null),
+      (visible.security ? field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption, RBAC", on: { input: e => { ctx.state.ui.specAnswers.security = e.target.value; } } })) : null),
+
       
       el("details", { style: "margin-top: 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px;" }, [
         el("summary", { style: "cursor: pointer; font-weight: 600; outline: none;", text: "Review Stages & Text" }),
         el("div", { style: "margin-top: 12px;" }, stageCards),
-        el("pre", { style: "white-space: pre-wrap; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; max-height: 200px; overflow: auto; margin-top: 12px;", text: result.preface + "\n\n" + result.raw })
+        el("div", { style: "display: flex; justify-content: flex-end; margin-top: 8px;" }, [
+          button("📋 Copy to Clipboard", () => navigator.clipboard.writeText((result.preface ? result.preface + "\n\n" : "") + result.raw), "ghost")
+        ]),
+
+        el("pre", { style: "white-space: pre-wrap; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; max-height: 200px; overflow: auto; margin-top: 12px;", text: (result.preface ? result.preface + "\n\n" : "") + result.raw })
       ]),
 
-      el("div", { className: "aisq-actions", style: "margin-top: 16px;" }, [
+      
+      (() => {
+        let saveMode = false;
+        const saveNameInput = el("input", { className: "aisq-input", placeholder: "Template name...", style: "display:none;width:140px;" });
+        const saveBtn = button("💾 Save as Template", async () => {
+          if (!saveMode) {
+            saveMode = true;
+            saveNameInput.style.display = "";
+            saveNameInput.focus();
+          } else {
+            const name = saveNameInput.value.trim();
+            if (name) {
+              await saveUserTemplate(name, ctx.state.ui.specAnswers);
+              saveNameInput.value = "";
+              saveNameInput.style.display = "none";
+              saveMode = false;
+              saveBtn.textContent = "✓ Saved!";
+              setTimeout(() => { saveBtn.textContent = "💾 Save as Template"; }, 2000);
+            }
+          }
+        }, "ghost");
+        return el("div", { style: "display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px;" }, [saveNameInput, saveBtn]);
+      })(),
+
+      el("div", { className: "aisq-actions", style: "margin-top: 8px;" }, [
         button("Add to Queue", submit, "ghost"),
         button("Generate & Run ▶", submitAndStart, "primary")
       ])
@@ -636,7 +754,7 @@
     }
     const stored = (ctx.state.chains || []).filter((candidate) => !(ctx.state.stackOrder || []).includes(candidate.id));
     if (stored.length) {
-      stack.append(el("div", { className: "aisq-help", text: "Stored but removed from stack" }));
+      stack.append(el("div", { className: "aisq-help", text: "Stored but removed from queue" }));
       stored.forEach((candidate, index) => stack.append(chainCard(candidate, (ctx.state.stackOrder || []).length + index)));
     }
     wrap.append(el("div", { className: "aisq-stack-title" }, [el("strong", { text: "Execution Queue" }), el("span", { className: "aisq-copy", text: `${(ctx.state.stackOrder || []).length} chain(s)` })]), stack);
@@ -651,7 +769,7 @@
       return wrap;
     }
     if (!chain) {
-      wrap.append(el("p", { className: "aisq-copy", text: "Select a chain from the Stack tab to inspect it." }));
+      wrap.append(el("p", { className: "aisq-copy", text: "Select a chain from the Queue tab to inspect it." }));
       return wrap;
     }
 
@@ -736,7 +854,7 @@
       const controls = [up, down, merge, remove];
       const isIntroActive = hasPreface && prompt.includePreface !== false;
       const togglePreface = button(
-        !hasPreface ? "Intro (No Preface)" : (isIntroActive ? "✓ Intro On" : "✕ Intro Off"), 
+        !hasPreface ? "Intro (No System Context)" : (isIntroActive ? "✓ Intro On" : "✕ Intro Off"), 
         () => ctx.command("TOGGLE_PROMPT_PREFACE", { chainId: chain.id, promptId: prompt.id, include: prompt.includePreface === false }),
         !hasPreface ? "ghost aisq-preface-disabled" : (isIntroActive ? "ghost aisq-preface-on" : "ghost aisq-preface-off")
       );
@@ -818,7 +936,7 @@
       });
       
       const moveIntroBtn = !hasPreface && prompt.text.includes("\n\n")
-        ? button("✂️ Move 1st para to Preface", () => {
+        ? button("✂️ Move 1st para to System Context", () => {
             ctx.command("MOVE_PARAGRAPH_TO_PREFACE", { chainId: chain.id, promptId: prompt.id });
           }, "ghost aisq-move-intro-btn", "Move the first paragraph of this prompt into the shared Preface")
         : null;
@@ -865,7 +983,7 @@
     const foreignPending = !!(ctx.state.runner.pendingPromptId && ctx.state.runner.ownerTabId && ctx.state.runner.ownerTabId !== ctx.tabId && !ctx.leaseToken);
     const stickyHeader = el("div", { className: "aisq-sticky-header" }, [
       el("div", { className: "aisq-run-card" }, [el("span", { className: `aisq-phase aisq-phase-${ctx.state.runner.phase}`, text: phase }), el("strong", { text: current?.label || currentChain?.name || "No active prompt" }), el("span", { className: "aisq-copy", text: `${counts.complete}/${counts.prompts} complete` })]),
-      el("div", { className: "aisq-meter", text: `Stack: ${counts.chains} chain(s) · ${counts.queued} queued · ${counts.pending} pending · ${counts.error} errors` })
+      el("div", { className: "aisq-meter", text: `Queue: ${counts.chains} chain(s) · ${counts.queued} queued · ${counts.pending} pending · ${counts.error} errors` })
     ]);
     return el("div", { className: "aisq-section" }, [
       stickyHeader,
@@ -917,7 +1035,7 @@
         button("Download ZIP", () => void ctx.downloadZip(), "ghost"),
         button("Diagnostics", ctx.downloadDiagnostics, "ghost", "Download redacted Copilot diagnostics")
       ]),
-      el("p", { className: "aisq-help", text: "The runner submits one prompt at a time, waits for a newer stable assistant turn, then advances through the editable stack without wrapping." })
+      el("p", { className: "aisq-help", text: "The runner submits one prompt at a time, waits for a newer stable assistant turn, then advances through the editable queue without wrapping." })
     ]);
   }
 
@@ -965,7 +1083,7 @@
     placement.addEventListener("change", () => ctx.mutate(() => { ctx.state.settings.pastePlacement = placement.value; }));
     return el("div", { className: "aisq-section" }, [
       field("Autonomy Level", autonomy),
-      checkboxSetting("autoRun", "Continue automatically across the stack", "Turn off for one-at-a-time manual Resume control."),
+      checkboxSetting("autoRun", "Continue automatically across the queue", "Turn off for one-at-a-time manual Resume control."),
       checkboxSetting("autoRetry", "Automatically retry AI Studio failures", "Retries only the newest failed turn."),
       checkboxSetting("stopAfterChain", "Pause after the current chain", "Useful for reviewing output before the next paste chain."),
       field("New-paste placement", placement),
@@ -979,11 +1097,11 @@
       numberSetting("completionTimeoutMs", "Completion timeout (minutes)", 60000, 1),
       checkboxSetting("autoAllowAccess", "Click Allow access automatically", "Off by default."),
       checkboxSetting("autoFix", "Click AI Studio Auto-fix automatically", "Off by default because it can modify generated files."),
-      checkboxSetting("autoDownloadOnDone", "Download ZIP after the whole stack completes"),
+      checkboxSetting("autoDownloadOnDone", "Download ZIP after the whole queue completes"),
       el("div", { className: "aisq-shortcuts" }, [
         el("strong", { text: "Shortcuts" }), 
-        el("span", { text: "Alt+Shift+A — toggle ctx.panel" }), 
-        el("span", { text: "Alt+Enter — start/resume stack" }),
+        el("span", { text: "Alt+Shift+A — toggle Copilot panel" }), 
+        el("span", { text: "Alt+Enter — start/resume queue" }),
         button("Reload Extension (Dev)", () => {
           const btn = ctx.shadow.querySelector("button:focus");
           if (btn) btn.textContent = "Reloading...";
