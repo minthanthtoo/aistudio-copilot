@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_FILES = ["src/core.js","src/core-parser.js","src/spec-data.js","src/spec-engine.js","src/chatgpt-extractor.js","src/evidence.js","src/authority.js","src/goal.js","src/memory.js","src/adapter-interface.js","src/content.js","src/host-bridge.js","src/runner.js","src/ui-tabs.js"];
+const CONTENT_FILES = ["src/core-constants.js", "src/core-utils.js", "src/core-state.js", "src/core-selectors.js", "src/core-commands.js","src/core-parser.js","src/spec-data.js","src/spec-engine.js","src/chatgpt-extractor.js","src/evidence.js","src/authority.js","src/goal.js","src/memory.js","src/adapter-interface.js","src/content.js", "src/content-state.js", "src/content-ui.js","src/host-dom.js", "src/host-bridge.js", "src/host-diagnostics.js","src/runner-lease.js", "src/runner-submission.js", "src/runner-transitions.js", "src/runner.js","src/ui-utils.js", "src/ui-tab-build.js", "src/ui-wizard.js", "src/ui-tab-stack.js", "src/ui-tab-prompts.js", "src/ui-tab-run.js", "src/ui-tab-settings.js"];
 const LEASES_KEY = "aisqRunnerLeases";
 const DEFAULT_LEASE_MS = 20_000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -118,7 +118,7 @@ if (chrome.runtime?.onInstalled?.addListener) {
         for (const tab of tabs) {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ["src/core.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js"]
+            files: ["src/core-constants.js", "src/core-utils.js", "src/core-state.js", "src/core-selectors.js", "src/core-commands.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js", "src/content-state.js", "src/content-ui.js"]
           }).catch(() => {});
         }
       });

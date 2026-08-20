@@ -20,7 +20,7 @@ test("manifest is a narrow MV3 extension with core loaded before the content run
   assert.deepEqual(manifest.host_permissions, ["https://aistudio.google.com/*", "https://chatgpt.com/*"]);
   const contentJs = manifest.content_scripts[0].js;
   assert.deepStrictEqual(contentJs, [
-    "src/core.js", "src/core-parser.js", "src/spec-data.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js", "src/host-bridge.js", "src/runner.js", "src/ui-tabs.js"
+    "src/core-constants.js", "src/core-utils.js", "src/core-state.js", "src/core-selectors.js", "src/core-commands.js", "src/core-parser.js", "src/spec-data.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/evidence.js", "src/authority.js", "src/goal.js", "src/memory.js", "src/adapter-interface.js", "src/content.js", "src/content-state.js", "src/content-ui.js", "src/host-dom.js", "src/host-bridge.js", "src/host-diagnostics.js", "src/runner-lease.js", "src/runner-submission.js", "src/runner-transitions.js", "src/runner.js", "src/ui-utils.js", "src/ui-tab-build.js", "src/ui-wizard.js", "src/ui-tab-stack.js", "src/ui-tab-prompts.js", "src/ui-tab-run.js", "src/ui-tab-settings.js"
   ]);
   assert.equal(manifest.content_scripts[0].run_at, "document_idle");
   assert.deepEqual(Object.keys(manifest.icons), ["16", "32", "48", "128"]);
@@ -83,7 +83,7 @@ test("toolbar action and command message only an active AI Studio Apps tab", asy
   assert.equal(injections.length, 1);
   assert.equal(JSON.stringify(injections[0]), JSON.stringify({
     target: { tabId: 42 },
-    files: ["src/core.js", "src/core-parser.js", "src/spec-data.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js", "src/host-bridge.js", "src/runner.js", "src/ui-tabs.js"]
+    files: ["src/core-constants.js", "src/core-utils.js", "src/core-state.js", "src/core-selectors.js", "src/core-commands.js", "src/core-parser.js", "src/spec-data.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/evidence.js", "src/authority.js", "src/goal.js", "src/memory.js", "src/adapter-interface.js", "src/content.js", "src/content-state.js", "src/content-ui.js", "src/host-dom.js", "src/host-bridge.js", "src/host-diagnostics.js", "src/runner-lease.js", "src/runner-submission.js", "src/runner-transitions.js", "src/runner.js", "src/ui-utils.js", "src/ui-tab-build.js", "src/ui-wizard.js", "src/ui-tab-stack.js", "src/ui-tab-prompts.js", "src/ui-tab-run.js", "src/ui-tab-settings.js"]
   }));
   assert.equal(sent.length, 3);
 });

@@ -2,7 +2,12 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const Core = require("../src/core.js");
+require("../src/core-constants.js");
+require("../src/core-utils.js");
+require("../src/core-state.js");
+require("../src/core-selectors.js");
+require("../src/core-commands.js");
+const Core = global.AISQCore;
 Object.assign(Core, require("../src/core-parser.js"));
 
 test("Stage headings split a prompt pack and preserve the shared preface", () => {
