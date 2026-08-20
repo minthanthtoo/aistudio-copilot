@@ -9,19 +9,22 @@
     if (options.className) node.className = options.className;
     if (options.text !== undefined) node.textContent = String(options.text);
     if (options.html !== undefined) node.innerHTML = String(options.html);
+    if (options.id) node.id = options.id;
     if (options.title) node.title = options.title;
     if (options.type) node.type = options.type;
-    if (options.value !== undefined) node.value = String(options.value);
     if (options.placeholder) node.placeholder = options.placeholder;
     if (options.checked !== undefined) node.checked = !!options.checked;
+    if (options.selected !== undefined) node.selected = !!options.selected;
     if (options.open !== undefined) node.open = !!options.open;
     if (options.disabled !== undefined) node.disabled = !!options.disabled;
     if (options.role) node.setAttribute("role", options.role);
     if (options.ariaLabel) node.setAttribute("aria-label", options.ariaLabel);
     if (options.ariaSelected !== undefined) node.setAttribute("aria-selected", String(!!options.ariaSelected));
+    if (options.style) node.setAttribute("style", options.style);
     if (options.attrs) for (const [name, value] of Object.entries(options.attrs)) if (value !== undefined && value !== null) node.setAttribute(name, String(value));
     if (options.on) for (const [event, handler] of Object.entries(options.on)) node.addEventListener(event, handler);
     for (const child of Array.isArray(children) ? children : [children]) if (child) node.append(child);
+    if (options.value !== undefined) node.value = String(options.value);
     return node;
   }
 
