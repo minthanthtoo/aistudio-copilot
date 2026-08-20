@@ -81,22 +81,31 @@
 
   function setNativeValue(control, value) {
     if (!control) return;
+    control.focus();
+    
+    // Most robust framework-agnostic way to simulate typing
+    try {
+      control.select();
+      if (document.execCommand("insertText", false, value)) {
+        control.dispatchEvent(new Event("input", { bubbles: true, cancelable: true, composed: true }));
+        return;
+      }
+    } catch {}
+
+    // Fallback to prototype setter
     const prototype = control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
     if (!setter) {
       control.value = value;
     } else {
-      control.focus();
       setter.call(control, value);
     }
-    const InputEventClass = globalThis.InputEvent || Event;
+    
+    control.dispatchEvent(new Event("input", { bubbles: true, cancelable: true, composed: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true, cancelable: true, composed: true }));
     try {
-      control.dispatchEvent(new InputEventClass("beforeinput", { bubbles: true, cancelable: true, composed: true, inputType: "insertText", data: value }));
+      control.dispatchEvent(new InputEvent("input", { bubbles: true, cancelable: true, composed: true, inputType: "insertText", data: value }));
     } catch {}
-    control.dispatchEvent(new InputEventClass("input", { bubbles: true, composed: true, inputType: "insertText", data: value }));
-    control.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    control.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, composed: true, key: "End" }));
-    control.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, composed: true, key: "End" }));
   }
 
   
@@ -220,7 +229,7 @@
     // ── Send / Stop button ────────────────────────────────────────────────────
     let sendBtn = null;
     if (mode === "editor" && chat) {
-      sendBtn = Array.from(chat.querySelectorAll('button.send-button, button[aria-label="Send"]'))
+      sendBtn = Array.from(chat.querySelectorAll('button.send-button, button[aria-label="Send"], button[aria-label="Send prompt"], button[mattooltip="Send prompt"], button[title="Send prompt"]'))
         .find(el => el.offsetParent !== null || visible(el)) || null;
     }
 
@@ -231,11 +240,16 @@
 
     // "running" class on the send button is the most reliable busy signal.
     // We also explicitly look for a "Cancel generation" or "Stop generation" button
-    const stopBtn = Array.from(chat ? chat.querySelectorAll('button[aria-label*="Stop"], button[aria-label*="Cancel generation"], button[mattooltip*="Stop"], button[mattooltip*="Cancel generation"]') : [])
+    const stopBtn = Array.from(chat ? chat.querySelectorAll('button[aria-label*="Stop"], button[aria-label*="Cancel"], button[mattooltip*="Stop"], button[mattooltip*="Cancel"], button[title*="Stop"], button[title*="Cancel"]') : [])
       .find(el => el.offsetParent !== null || visible(el)) || null;
+
+    const hasStopIcon = chat ? Array.from(chat.querySelectorAll('mat-icon, .material-icons, .material-symbols-outlined')).some(el => visible(el) && /^(stop|stop_circle|cancel|pause|pause_circle)$/i.test(ctx.textOf(el).trim())) : false;
+    const isStreaming = chat ? !!chat.querySelector('.streaming, .generating, ms-stream-indicator') : false;
 
     const isRunning = !!(sendBtn?.classList.contains("running") ||
       stopBtn ||
+      hasStopIcon ||
+      isStreaming ||
       thinkingNode ||
       (chat ? Array.from(chat.querySelectorAll('ms-gradient-spinner')).some(el => visible(el)) : false));
 

@@ -809,6 +809,8 @@
       editor.addEventListener("change", () => ctx.command("EDIT_PROMPT", { chainId: chain.id, promptId: prompt.id, text: editor.value }));
       const up = button("↑", () => ctx.command("MOVE_PROMPT", { chainId: chain.id, promptId: prompt.id, direction: -1 }), "ghost", `Move ${prompt.label} earlier`);
       const down = button("↓", () => ctx.command("MOVE_PROMPT", { chainId: chain.id, promptId: prompt.id, direction: 1 }), "ghost", `Move ${prompt.label} later`);
+      up.disabled = locked || index === 0 || ["pending", "complete"].includes(chain.prompts[index - 1]?.status);
+      down.disabled = locked || index === chain.prompts.length - 1 || ["pending", "complete"].includes(chain.prompts[index + 1]?.status);
       const merge = button("Merge", () => ctx.command("MERGE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "ghost");
       const remove = button("Delete", () => ctx.command("DELETE_PROMPT", { chainId: chain.id, promptId: prompt.id }), "danger ghost");
       
@@ -1170,4 +1172,13 @@
     renderRun,
     renderSettings
   });
+
+  console.log("[AISQ] ui-tabs.js loaded successfully.");
+  
+  // All content scripts have now executed synchronously. It is safe to initialize.
+  if (typeof ctx.init === "function") {
+    ctx.init().catch(err => console.error("[AISQ] ERROR during init:", err));
+  } else {
+    console.error("[AISQ] SYNC ERROR: ctx.init is not a function!");
+  }
 })(typeof globalThis !== "undefined" ? globalThis : this);

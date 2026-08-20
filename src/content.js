@@ -124,19 +124,41 @@
   function runnerChain() { return Core.getRunnerChain(state); }
   function runnerPrompt() { return Core.getRunnerPrompt(state); }
 
-  function currentPageKey() {
-    const parts = location.pathname.split("/").filter(Boolean);
-    // /apps/<id>  → /apps/<id>
-    if (parts[0] === "apps") return `/${parts.slice(0, 2).join("/")}`;
-    // /app/apps/<id>  → /app/apps/<id>
-    if (parts[0] === "app" && parts[1] === "apps") return `/${parts.slice(0, 3).join("/")}`;
-    return location.pathname || "/";
-  }
+
 
   /** True if the bound key is a generic apps-list page and the current key is a specific app under it. */
-  function isAppsListUpgrade(boundKey, currentKey) {
-    return /\/apps$/.test(boundKey) && currentKey.startsWith(boundKey + "/");
+
+  let lastSeenPageKey = Core.getCurrentPageKey();
+  
+  function checkUrlUpgrade() {
+    const current = Core.getCurrentPageKey();
+    if (lastSeenPageKey !== current) {
+      if ((lastSeenPageKey === "app:home" && current.startsWith("app:")) || (lastSeenPageKey === "prompt:home" && current.startsWith("prompt:"))) {
+        // Upgrade detected! Migrate the projects and runners map!
+        mutate(() => {
+          if (state.runners && state.runners[lastSeenPageKey]) {
+            state.runners[current] = state.runners[lastSeenPageKey];
+            delete state.runners[lastSeenPageKey];
+          }
+          if (state.projects && state.projects[lastSeenPageKey]) {
+            state.projects[current] = state.projects[lastSeenPageKey];
+            delete state.projects[lastSeenPageKey];
+          }
+        });
+      }
+      lastSeenPageKey = current;
+    }
   }
+
+  function currentPageKey() {
+    return Core.getCurrentPageKey();
+  }
+
+  function isAppsListUpgrade(boundKey, currentKey) {
+    return (boundKey === "app:home" && currentKey.startsWith("app:") && currentKey !== "app:home") ||
+           (boundKey === "prompt:home" && currentKey.startsWith("prompt:") && currentKey !== "prompt:home");
+  }
+
 
   function pageMatchesBinding() {
     if (!state.runner.boundPageKey) return true;
@@ -189,6 +211,10 @@
         return false;
       }
       const snapshot = clone(state);
+      delete snapshot.chains;
+      delete snapshot.stackOrder;
+      delete snapshot.selectedChainId;
+      delete snapshot.runner; // Also delete runner proxy to avoid duplication
       await adapter.set(STORAGE_KEY, snapshot);
       if (!globalThis.__AISQ_LEGACY_WRITTEN__) {
         await adapter.set(LEGACY_STORAGE_KEY, snapshot);
@@ -246,6 +272,7 @@
     }
     if (options.history) addHistory(options.history.kind, options.history.message, options.history.data || null);
     if (!state.runner.enabled && state.runner.phase === PHASES.PAUSED) ctx.releaseRunnerLease();
+    touchState();
     scheduleSave();
     requestRender();
     return result;
@@ -288,12 +315,17 @@
     if (state.settings.isMinimized) panel.classList.add("aisq-minimized");
     else panel.classList.remove("aisq-minimized");
 
+
+    const allProjects = Core.getAllProjects(state).filter(p => p.chains?.length > 0);
+    const projectCount = allProjects.length;
+    
     const header = ctx.el("header", { className: "aisq-header" }, [
-      ctx.el("div", {}, [
+      ctx.el("div", { style: "display: flex; align-items: center; gap: 8px;" }, [
         ctx.el("strong", { text: "Copilot" }), 
-        ctx.el("div", { className: "aisq-subtitle", text: "Google AI Studio Apps · stacked chains" })
+        ctx.el("span", { className: "aisq-host-badge", text: `${projectCount} Project${projectCount !== 1 ? 's' : ''}` })
       ]), 
       ctx.el("div", { className: "aisq-window-controls" }, [
+
         ctx.button(state.settings.isMinimized ? "◱" : "—", () => mutate(() => { state.settings.isMinimized = !state.settings.isMinimized; }), "icon", state.settings.isMinimized ? "Maximize Copilot" : "Minimize Copilot"),
         ctx.button("×", () => mutate(() => { state.settings.panelOpen = false; }), "icon", "Close Copilot")
       ])
@@ -607,6 +639,7 @@
     });
     tickIntervalId = setInterval(() => {
       if (typeof ctx.tick === "function") {
+        checkUrlUpgrade();
         void ctx.tick();
       } else {
         console.error("[AISQ] INTERVAL ERROR: ctx.tick is not a function! It is:", typeof ctx.tick);
@@ -614,12 +647,13 @@
     }, TICK_MS);
     globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
     if (typeof ctx.tick === "function") {
-      void ctx.tick();
+      checkUrlUpgrade();
+        void ctx.tick();
     } else {
       console.error("[AISQ] SYNC ERROR: ctx.tick is not a function! It is:", typeof ctx.tick);
     }
     globalThis.__aisq = Object.freeze({ show: () => mutate(() => { state.settings.panelOpen = true; }), hide: () => mutate(() => { state.settings.panelOpen = false; }), scan: () => ctx.scanHostCached(), state: () => { Core.syncLegacyAliases(state); return clone(state); }, diagnostics: () => clone(ctx.createDiagnosticSnapshot()), tick: () => ctx.tick(), save: () => saveNow(), importText: ctx.importText });
   }
 
-  Promise.resolve().then(() => init());
+  ctx.init = init;
 })();

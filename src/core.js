@@ -211,14 +211,22 @@
     };
   }
 
+  
+  function defaultProject() {
+    return {
+      chains: [],
+      stackOrder: [],
+      selectedChainId: null
+    };
+  }
+
   function defaultState() {
     const state = {
       schemaVersion: SCHEMA_VERSION,
       revision: 0,
       updatedAt: nowISO(),
-      chains: [],
-      stackOrder: [],
-      selectedChainId: null,
+      projects: {},
+      runners: {},
       runner: defaultRunner(),
       settings: defaultSettings(),
       ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, specMode: "paste", specScreen: 0, specAnswers: {} },
@@ -295,7 +303,9 @@
     if (typeof window === 'undefined' || !window.location) return 'root';
     const p = window.location.pathname;
     if (p.startsWith("/app/prompts/")) return "prompt:" + p.split("/").pop();
+    if (p === "/app/prompts") return "prompt:home";
     if (p.startsWith("/app/apps/")) return "app:" + p.split("/").pop();
+    if (p === "/app/apps") return "app:home";
     return "root";
   }
 
@@ -320,15 +330,32 @@
     
     const runners = raw.runners || {};
     
+    if (legacyRunner.pendingPromptId && Object.keys(runners).length === 0) {
+       const boundKey = legacyRunner.boundPageKey || "root";
+       const convertedKey = boundKey.startsWith("/app/apps/") ? "app:" + boundKey.split("/").pop() 
+                          : boundKey.startsWith("/app/prompts/") ? "prompt:" + boundKey.split("/").pop() 
+                          : "root";
+       runners[convertedKey] = legacyRunner;
+    }
+    
+    
+    let projects = raw.projects || {};
+    if (!raw.projects && sourceChains.length > 0) {
+      const currentKey = getCurrentPageKey();
+      projects[currentKey] = {
+        chains,
+        stackOrder,
+        selectedChainId
+      };
+    }
+
     const state = {
       ...base,
       ...raw,
       schemaVersion: SCHEMA_VERSION,
       revision: Math.max(0, Number(raw.revision || 0)),
       updatedAt: raw.updatedAt || base.updatedAt,
-      chains,
-      stackOrder,
-      selectedChainId,
+      projects,
       runners,
       settings: { ...base.settings, ...(raw.settings || {}) },
       ui: { ...base.ui, ...(raw.ui || {}) },
@@ -336,11 +363,30 @@
       eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-400) : []
     };
     
+    
+    for (const prop of ['chains', 'stackOrder', 'selectedChainId']) {
+      Object.defineProperty(state, prop, {
+        enumerable: true,
+        get() {
+          const key = getCurrentPageKey();
+          if (!this.projects[key]) this.projects[key] = defaultProject();
+          return this.projects[key][prop];
+        },
+        set(val) {
+          const key = getCurrentPageKey();
+          if (!this.projects[key]) this.projects[key] = defaultProject();
+          this.projects[key][prop] = val;
+        }
+      });
+    }
+
     Object.defineProperty(state, 'runner', {
       enumerable: true,
       get() {
         const key = getCurrentPageKey();
-        if (!this.runners[key]) this.runners[key] = { ...legacyRunner, phase: PHASES.PAUSED, enabled: false };
+        if (!this.runners[key]) {
+          this.runners[key] = { ...defaultRunner(), phase: PHASES.READY, enabled: false, activeChainId: this.selectedChainId };
+        }
         return this.runners[key];
       },
       set(val) {
@@ -382,6 +428,11 @@
     const queue = makeChain(name, prompts, sourceText);
     queue.id = uid("queue");
     return queue;
+  }
+
+  
+  function getAllProjects(state) {
+    return Object.entries(state?.projects || {}).map(([key, project]) => ({ key, ...project }));
   }
 
   function getChainById(state, id) {
@@ -869,11 +920,13 @@
     defaultRunner,
     defaultState,
     migrateState,
+    getCurrentPageKey,
     syncLegacyAliases,
     makeChain,
     makeQueue,
     normalizeChain,
     normalizePrompt,
+    getAllProjects,
     getChainById,
     getSelectedChain,
     getActiveQueue,

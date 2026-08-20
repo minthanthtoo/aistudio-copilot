@@ -245,7 +245,10 @@ try {
     if (!persisted || ctx.state.runner.pendingPromptId !== intendedPromptId || !ctx.state.runner.enabled) return;
     
     if (host.submit) {
-      host.submit.click();
+      const isStop = Array.from(host.submit.querySelectorAll('mat-icon, .material-icons, .material-symbols-outlined')).some(el => /^(stop|stop_circle|cancel|pause|pause_circle)$/i.test(ctx.state.ui?.draft ? "" : (el.textContent || "")));
+      if (!isStop && !/^(stop|cancel|pause)/i.test(host.submit.textContent?.trim() || "")) {
+        host.submit.click();
+      }
     } else if (host.textarea) {
       const enterKey = (type) => new KeyboardEvent(type, {
         bubbles: true,
@@ -697,5 +700,6 @@ try {
   console.log("[AISQ] runner.js loaded successfully. ctx.tick is now:", typeof ctx.tick);
 } catch (err) {
   console.error("[AISQ] ERROR in runner.js initialization:", err);
+  throw err;
 }
 })(typeof globalThis !== "undefined" ? globalThis : this);
