@@ -438,7 +438,7 @@ REQUIREMENTS:
     
     const raw = enabledStages.map((s, i) => 
       `## Stage ${i + 1} — ${s.title}\n\n${s.builder(inferred).trim()}`
-    ).join("\n\n---\n\n");
+    ).join("\n\n\n");
 
     return { 
       raw, 
@@ -459,7 +459,7 @@ REQUIREMENTS:
         clean[key] = answers[key];
       }
     }
-    return JSON.stringify(clean);
+    return JSON.stringify(clean, null, 2);
   }
 
   const VALID_TEMPLATE_KEYS = new Set([

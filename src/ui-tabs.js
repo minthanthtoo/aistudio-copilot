@@ -299,8 +299,8 @@
   }
 
   function renderWizardScreen0(specApi) {
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => ctx.state.ui.specAnswers.name = e.target.value } });
-    const descInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => ctx.state.ui.specAnswers.description = e.target.value } });
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.name = e.target.value }); } } });
+    const descInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do list app", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.description = e.target.value }); } } });
     
     // Quick Starts
     const quickStartCards = specApi.BUILT_IN_TEMPLATES.map(t => {
@@ -432,27 +432,28 @@
     const inferred = specApi.inferDefaults(ctx.state.ui.specAnswers);
     const visible = specApi.getVisibleSections(inferred);
     
-    // Core Features
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => ctx.state.ui.specAnswers.features = e.target.value } });
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.features = e.target.value }); } } });
     const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
     const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
       const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
       return el("button", { text: (isSelected ? "✓ " : "+ ") + s, style: `font-size: 11px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; background: ${isSelected ? '#e0f0ff' : 'transparent'}; cursor: pointer;`, on: { click: () => {
-        if (isSelected) {
-          ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips.filter(x => x !== s);
-        } else {
-          ctx.state.ui.specAnswers.featureChips.push(s);
-        }
+        ctx.mutate(() => {
+          if (isSelected) {
+            ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips.filter(x => x !== s);
+          } else {
+            ctx.state.ui.specAnswers.featureChips.push(s);
+          }
+        });
         ctx.requestRender();
       }} });
     }));
 
     // Design
     const genreSelect = el("select", { className: "aisq-select" }, [el("option", { value: "", text: "-- Select Genre --" }), ...Object.entries(specApi.GENRES).map(([id, info]) => el("option", { value: id, text: info.label, selected: inferred.genre === id }))]);
-    genreSelect.addEventListener("change", e => ctx.state.ui.specAnswers.genre = e.target.value);
+    genreSelect.addEventListener("change", e => { ctx.mutate(() => { ctx.state.ui.specAnswers.genre = e.target.value; }); ctx.requestRender(); });
     
     const mkCheckbox = (label, key) => el("label", { style: "display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;" }, [
-      el("input", { type: "checkbox", checked: !!ctx.state.ui.specAnswers[key], on: { change: e => ctx.state.ui.specAnswers[key] = e.target.checked } }),
+      el("input", { type: "checkbox", checked: !!ctx.state.ui.specAnswers[key], on: { change: e => { ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.checked }); ctx.requestRender(); } } }),
       el("span", { text: label })
     ]);
     const designOptions = el("div", { style: "display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px;" }, [
@@ -461,7 +462,7 @@
 
     // Screens
     const screensValue = Array.isArray(ctx.state.ui.specAnswers.screens) ? ctx.state.ui.specAnswers.screens.join(", ") : (ctx.state.ui.specAnswers.screens || "");
-    const screensInput = el("input", { className: "aisq-input", value: screensValue, placeholder: "Home, Login, Dashboard", on: { change: e => ctx.state.ui.specAnswers.screens = e.target.value.split(",").map(x => x.trim()).filter(Boolean) } });
+    const screensInput = el("input", { className: "aisq-input", value: screensValue, placeholder: "Home, Login, Dashboard", on: { change: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.screens = e.target.value.split(",").map(x => x.trim()).filter(Boolean) }); ctx.requestRender(); } } });
 
     const fields = [
       field("Core Features", el("div", {}, [featureText, suggestionChips])),
@@ -472,7 +473,7 @@
     if (visible.techStack) {
       const mkTechSelect = (label, key, options) => {
         const sel = el("select", { className: "aisq-select" }, [el("option", { value: "", text: `-- Select ${label} --` }), ...options.map(o => el("option", { value: o, text: o, selected: inferred[key] === o }))]);
-        sel.addEventListener("change", e => ctx.state.ui.specAnswers[key] = e.target.value);
+        sel.addEventListener("change", e => { ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value }); ctx.requestRender(); });
         return field(label, sel);
       };
       fields.push(el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" }, [
@@ -485,12 +486,12 @@
         className: "aisq-input",
         value: ctx.state.ui.specAnswers.industry || "",
         placeholder: "e.g. Healthcare, Fintech, Education",
-        on: { input: e => ctx.state.ui.specAnswers.industry = e.target.value }
+        on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.industry = e.target.value }); } }
       })));
     }
 
     if (visible.security) {
-      fields.push(field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption", on: { input: e => ctx.state.ui.specAnswers.security = e.target.value } })));
+      fields.push(field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption", on: { input: e => { ctx.mutate(() => { ctx.state.ui.specAnswers.security = e.target.value }); } } })));
     }
 
     return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" }, [
@@ -518,7 +519,7 @@
       
       const toggle = el("input", { type: "checkbox", checked: isEnabled, disabled: s.required });
       toggle.addEventListener("change", e => {
-        ctx.state.ui.specAnswers.stageOverrides[s.id] = e.target.checked;
+        ctx.mutate(() => { ctx.state.ui.specAnswers.stageOverrides[s.id] = e.target.checked; });
         ctx.requestRender();
       });
       
@@ -535,7 +536,7 @@
 
     const rawToggle = el("label", { style: "display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-bottom:8px;" }, [
       el("input", { type: "checkbox", checked: ctx.state.ui.specRawView, on: { change: e => {
-        ctx.state.ui.specRawView = e.target.checked;
+        ctx.mutate(() => { ctx.state.ui.specRawView = e.target.checked; });
         ctx.requestRender();
       }}}),
       el("span", { text: "View Raw Text" })
@@ -555,6 +556,8 @@
       if (commandResult.ok) {
         ctx.mutate(() => { ctx.state.ui.specMode = "paste"; ctx.state.ui.specScreen = 0; ctx.state.ui.specAnswers = {}; });
         ctx.requestRender();
+      } else {
+        alert("Error: " + commandResult.error);
       }
     };
     
@@ -567,9 +570,11 @@
           ctx.state.ui.specScreen = 0; 
           ctx.state.ui.specAnswers = {}; 
           ctx.state.settings.activeTab = "prompts";
-          ctx.state.runner.enabled = true;
+          ctx.state.uiIntent = { action: 'start', scope: 'stack' };
         });
         ctx.requestRender();
+      } else {
+        alert("Error: " + commandResult.error);
       }
     };
 
