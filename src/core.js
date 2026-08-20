@@ -291,12 +291,18 @@
     return state.stackOrder;
   }
 
-  function migrateState(value) {
+  function getCurrentPageKey() {
+    if (typeof window === 'undefined' || !window.location) return 'root';
+    const p = window.location.pathname;
+    if (p.startsWith("/app/prompts/")) return "prompt:" + p.split("/").pop();
+    if (p.startsWith("/app/apps/")) return "app:" + p.split("/").pop();
+    return "root";
+  }
+
+  function migrateState(raw = {}) {
     const base = defaultState();
-    const raw = value && typeof value === "object" ? value : {};
-    // A V1-compatible in-memory fixture can contain the default empty `chains`
-    // array alongside populated `queues`. Prefer the populated representation.
-    const sourceChains = Array.isArray(raw.chains) && (raw.chains.length || !Array.isArray(raw.queues) || !raw.queues.length)
+    if (!raw || typeof raw !== "object") return base;
+    const sourceChains = Array.isArray(raw.chains)
       ? raw.chains
       : Array.isArray(raw.queues) ? raw.queues : [];
     const chains = sourceChains.map(normalizeChain);
@@ -305,12 +311,15 @@
       ? raw.stackOrder.slice()
       : Array.isArray(legacyOrder) ? legacyOrder.slice() : chains.map((chain) => chain.id);
     const selectedChainId = raw.selectedChainId || raw.activeQueueId || chains[0]?.id || null;
-    const runner = { ...base.runner, ...(raw.runner || {}) };
-    runner.activeChainId = runner.activeChainId || runner.runningSeriesId || selectedChainId;
-    if (runner.pendingPromptId && !chains.some((chain) => chain.id === runner.activeChainId && chain.prompts.some((prompt) => prompt.id === runner.pendingPromptId))) {
-      const owner = chains.find((chain) => chain.prompts.some((prompt) => prompt.id === runner.pendingPromptId));
-      runner.activeChainId = owner?.id || null;
+    const legacyRunner = { ...base.runner, ...(raw.runner || {}) };
+    legacyRunner.activeChainId = legacyRunner.activeChainId || legacyRunner.runningSeriesId || selectedChainId;
+    if (legacyRunner.pendingPromptId && !chains.some((chain) => chain.id === legacyRunner.activeChainId && chain.prompts.some((prompt) => prompt.id === legacyRunner.pendingPromptId))) {
+      const owner = chains.find((chain) => chain.prompts.some((prompt) => prompt.id === legacyRunner.pendingPromptId));
+      legacyRunner.activeChainId = owner?.id || null;
     }
+    
+    const runners = raw.runners || {};
+    
     const state = {
       ...base,
       ...raw,
@@ -320,12 +329,25 @@
       chains,
       stackOrder,
       selectedChainId,
-      runner,
+      runners,
       settings: { ...base.settings, ...(raw.settings || {}) },
       ui: { ...base.ui, ...(raw.ui || {}) },
       history: Array.isArray(raw.history) ? raw.history.slice(-300) : [],
       eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-400) : []
     };
+    
+    Object.defineProperty(state, 'runner', {
+      enumerable: true,
+      get() {
+        const key = getCurrentPageKey();
+        if (!this.runners[key]) this.runners[key] = { ...legacyRunner, phase: PHASES.PAUSED, enabled: false };
+        return this.runners[key];
+      },
+      set(val) {
+        const key = getCurrentPageKey();
+        this.runners[key] = val;
+      }
+    });
     ensureStackOrder(state);
     if (!state.selectedChainId || !state.chains.some((chain) => chain.id === state.selectedChainId)) state.selectedChainId = state.stackOrder[0] || null;
     if (state.runner.pendingPromptId && state.runner.activeChainId) {

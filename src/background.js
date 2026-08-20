@@ -1,10 +1,10 @@
 "use strict";
 
 const CONTENT_FILES = ["src/core.js","src/core-parser.js","src/spec-data.js","src/spec-engine.js","src/chatgpt-extractor.js","src/evidence.js","src/authority.js","src/goal.js","src/memory.js","src/adapter-interface.js","src/content.js","src/host-bridge.js","src/runner.js","src/ui-tabs.js"];
-const LEASE_KEY = "aisqRunnerLease";
+const LEASES_KEY = "aisqRunnerLeases";
 const DEFAULT_LEASE_MS = 20_000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-let memoryLease = null;
+let memoryLeases = {};
 let leaseQueue = Promise.resolve();
 
 function serializedLeaseOperation(operation) {
@@ -13,17 +13,22 @@ function serializedLeaseOperation(operation) {
   return result;
 }
 
-async function readLease() {
-  if (!chrome.storage?.session) return memoryLease;
-  const value = await chrome.storage.session.get(LEASE_KEY);
-  return value?.[LEASE_KEY] || null;
+async function readLease(key) {
+  if (!chrome.storage?.session) return memoryLeases[key] || null;
+  const value = await chrome.storage.session.get(LEASES_KEY);
+  return (value?.[LEASES_KEY] || {})[key] || null;
 }
 
-async function writeLease(lease) {
-  memoryLease = lease || null;
+async function writeLease(key, lease) {
+  if (lease) memoryLeases[key] = lease;
+  else delete memoryLeases[key];
+  
   if (!chrome.storage?.session) return;
-  if (lease) await chrome.storage.session.set({ [LEASE_KEY]: lease });
-  else await chrome.storage.session.remove(LEASE_KEY);
+  const current = await chrome.storage.session.get(LEASES_KEY);
+  const leases = current?.[LEASES_KEY] || {};
+  if (lease) leases[key] = lease;
+  else delete leases[key];
+  await chrome.storage.session.set({ [LEASES_KEY]: leases });
 }
 
 function leaseDuration(message) {
@@ -37,8 +42,9 @@ function leaseToken(tabId) {
 async function handleLeaseMessage(message, sender) {
   const tabId = sender?.tab?.id;
   if (!Number.isInteger(tabId)) return { ok: false, error: "Runner lease requires an AI Studio tab" };
+  const key = message.key || 'root';
   const now = Date.now();
-  const current = await readLease();
+  const current = await readLease(key);
   const currentExpired = !current || Number(current.expiresAt || 0) <= now;
 
   if (message.type === "AISQ_LEASE_ACQUIRE") {
@@ -51,31 +57,28 @@ async function handleLeaseMessage(message, sender) {
       updatedAt: now,
       expiresAt: now + leaseDuration(message)
     };
-    await writeLease(lease);
+    await writeLease(key, lease);
     return { ok: true, ...lease };
   }
 
   if (message.type === "AISQ_LEASE_HEARTBEAT") {
-    // If lease is expired (e.g. extension reloaded), but this tab is heartbeating, grant it the lease
     if (currentExpired) {
       const lease = { tabId, token: message.token, updatedAt: now, expiresAt: now + leaseDuration(message) };
-      await writeLease(lease);
+      await writeLease(key, lease);
       return { ok: true, ...lease };
     }
     
-    // Otherwise, check if someone else owns it or token mismatch
     if (current.tabId !== tabId || current.token !== message.token) {
       return { ok: false, ownerTabId: current?.tabId || null };
     }
     
-    // Extend the lease
     const lease = { ...current, updatedAt: now, expiresAt: now + leaseDuration(message) };
-    await writeLease(lease);
+    await writeLease(key, lease);
     return { ok: true, ...lease };
   }
 
   if (message.type === "AISQ_LEASE_RELEASE") {
-    if (current && current.tabId === tabId && (!message.token || current.token === message.token)) await writeLease(null);
+    if (current && current.tabId === tabId && (!message.token || current.token === message.token)) await writeLease(key, null);
     return { ok: true };
   }
 

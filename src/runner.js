@@ -56,7 +56,7 @@
       if (acquired) ctx.leaseToken = `local-${ctx.tabId}`;
       return acquired;
     }
-    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_ACQUIRE", leaseMs: 20000 });
+    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_ACQUIRE", key: ctx.currentPageKey(), leaseMs: 20000 });
     if (!response?.ok) {
       if (response && response.error && (response.error.includes("Extension context invalidated") || response.error.includes("message port closed"))) {
         ctx.state.runner.lastError = "Extension was reloaded. Please refresh this page to continue.";
@@ -83,7 +83,7 @@
     }
     if (!ctx.leaseToken) return acquireRunnerLease();
     if (Date.now() - ctx.lastLeaseHeartbeatAt < 5000) return true;
-    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_HEARTBEAT", token: ctx.leaseToken, leaseMs: 20000 });
+    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_HEARTBEAT", token: ctx.leaseToken, key: ctx.currentPageKey(), leaseMs: 20000 });
     if (!response?.ok) {
       ctx.leaseToken = null;
       ctx.runnerOwnedByOtherTab = true;
@@ -114,7 +114,7 @@
     ctx.leaseToken = null;
     ctx.lastLeaseHeartbeatAt = 0;
     ctx.runnerOwnedByOtherTab = false;
-    if (chrome.runtime?.sendMessage && token) void sendRuntimeMessage({ type: "AISQ_LEASE_RELEASE", token }, 800);
+    if (chrome.runtime?.sendMessage && token) void sendRuntimeMessage({ type: "AISQ_LEASE_RELEASE", token, key: ctx.currentPageKey() }, 800);
   }
 
   function nextTarget() {
