@@ -421,10 +421,10 @@
       el("div", { style: "font-size: 11px; color: #9995a5;" }, [document.createTextNode(stackSummary)])
     ]);
 
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); } } });
-    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); } } });
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAndStart(); } }, input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); } } });
+    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAndStart(); } }, input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); } } });
     
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); } } });
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAndStart(); } }, input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); } } });
     const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
     const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
       const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
@@ -551,6 +551,18 @@
     const isPaused = isActive && !ctx.state.runner.enabled;
     let highlightClass = "";
     if (isActive) highlightClass = isPaused ? " aisq-highlight-paused" : " aisq-highlight-running";
+    
+    const justImported = ctx.state.ui && ctx.state.ui.lastImportId === chain.id;
+    if (justImported) {
+       highlightClass += " just-imported";
+       setTimeout(() => { 
+         if (ctx.state.ui.lastImportId === chain.id) { 
+           ctx.state.ui.lastImportId = null; 
+           ctx.requestRender(); 
+         } 
+       }, 2000);
+    }
+    
     const locked = isActive && ctx.state.runner.enabled;
     const card = el("div", { className: `aisq-chain-card ${locked ? "locked" : ""} ${selected ? "selected" : ""}${highlightClass}` });
     const previewText = (chain.preface ? chain.preface + "\n\n" : "") + chain.prompts.map((p) => p.text).join("\n\n");
