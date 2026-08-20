@@ -217,11 +217,6 @@
              }
           }
         }
-      } else if (detectType === "natural") {
-                startWizardWithDescription(ctx.state.ui.draft);
-             }
-          }
-        }
       }
     });
 
