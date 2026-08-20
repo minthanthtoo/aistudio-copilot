@@ -602,20 +602,29 @@ function renderWizardDetails() {
       });
 
       sel.addEventListener("change", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value; });
-        ctx.requestRender();
-        if (e.target.value === "__custom__") {
-          setTimeout(() => customInput.focus(), 50);
+        const v = e.target.value;
+        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = v; });
+        if (v === "__custom__") {
+          customInput.style.display = "block";
+          customInput.value = "";
+          sel.blur();
+          setTimeout(() => customInput.focus(), 30);
+        } else {
+          customInput.style.display = "none";
+          customInput.value = "";
+          sel.blur();
+          setTimeout(() => ctx.requestRender(), 50);
         }
       });
 
       customInput.addEventListener("input", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "__custom__"; });
-        ctx.requestRender();
+        ctx.state.ui.specAnswers[key] = e.target.value || "__custom__";
       });
       
       customInput.addEventListener("change", e => {
-        setTimeout(() => ctx.requestRender(), 150);
+        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "__custom__"; });
+        customInput.blur();
+        setTimeout(() => ctx.requestRender(), 50);
       });
 
       return field(label, el("div", {}, [sel, customInput]));
