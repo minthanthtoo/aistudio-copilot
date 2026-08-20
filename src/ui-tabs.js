@@ -140,10 +140,6 @@
     ctx.state.ui.draft = ctx.state.ui.draft || "";
     ctx.state.ui.buildView = ctx.state.ui.buildView || "input"; // "input", "wizard_details", "advanced"
     
-    // Empty State Check
-    if (!(ctx.state.chains || []).length && !ctx.state.ui.draft && ctx.state.ui.buildView === "input") {
-      return renderEmptyState();
-    }
     
     if (ctx.state.ui.buildView === "wizard_details") {
       return renderWizardDetails();
@@ -155,62 +151,6 @@
       renderAdvancedSection()
     ]);
     return smartInputContainer;
-  }
-
-  function renderEmptyState() {
-    const specApi = globalThis.AISQSpec;
-    
-    const mkCard = (icon, title, desc, onClick) => el("button", {
-      className: "aisq-quickstart-card",
-      on: { click: onClick }
-    }, [
-      el("div", { style: "font-size: 24px; margin-bottom: 8px;", text: icon }),
-      el("div", { style: "font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #f5f4fa;", text: title }),
-      el("div", { style: "font-size: 11px; color: #a9a6b4; line-height: 1.3;", text: desc })
-    ]);
-
-    const cards = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px;" }, [
-      mkCard("📊", "SaaS Dashboard", "B2B app with multi-tenancy", () => startWizardWithTemplate("saas-dashboard")),
-      mkCard("📁", "Portfolio", "Minimalist personal site", () => startWizardWithTemplate("portfolio")),
-      mkCard("🛒", "E-Commerce", "Shop with cart & checkout", () => startWizardWithTemplate("e-commerce")),
-      mkCard("🤖", "AI Agent", "LLM wrapper or swarm", () => startWizardWithTemplate("ai-agent")),
-      mkCard("📱", "Mobile App", "React Native or Flutter app", () => startWizardWithTemplate("mobile-social")),
-      mkCard("🎮", "Web Game", "Canvas-based game loop", () => startWizardWithTemplate("web-game"))
-    ]);
-
-    const descInput = el("textarea", { 
-      className: "aisq-draft", 
-      style: "min-height: 60px; margin-bottom: 12px;", 
-      placeholder: "e.g. A to-do app with React and Supabase...",
-      on: { 
-        keydown: (e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-             e.preventDefault();
-             startWizardWithDescription(e.target.value);
-          }
-        }
-      }
-    });
-
-    const generateBtn = button("✨ Generate Prompt Sequence", () => startWizardWithDescription(descInput.value), "primary");
-
-    return el("div", { className: "aisq-section" }, [
-      el("div", { style: "font-size: 16px; font-weight: 600; margin-bottom: 12px;" }, [document.createTextNode("🚀 What are you building?")]),
-      cards,
-      el("div", { style: "display: flex; align-items: center; gap: 12px; margin-bottom: 24px;" }, [
-        el("hr", { style: "flex: 1; border: none; border-top: 1px solid rgba(255,255,255,0.1);" }),
-        el("span", { style: "font-size: 11px; color: #888;" }, [document.createTextNode("or describe it")]),
-        el("hr", { style: "flex: 1; border: none; border-top: 1px solid rgba(255,255,255,0.1);" })
-      ]),
-      descInput,
-      el("div", { style: "display: flex; gap: 8px; justify-content: space-between; align-items: center;" }, [
-        el("div", { style: "display: flex; gap: 8px;" }, [
-          button("📋 Paste prompts", () => { ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.ui.buildView = "input"; }); ctx.requestRender(); }, "ghost"),
-          button("📂 Copy from project", () => { ctx.mutate(() => { ctx.state.ui.buildView = "input"; ctx.state.ui.showAdvanced = true; }); ctx.requestRender(); }, "ghost")
-        ]),
-        generateBtn
-      ])
-    ]);
   }
 
   function startWizardWithTemplate(templateId) {
@@ -340,21 +280,44 @@
         button("✨ Build with Wizard →", () => startWizardWithDescription(val), "primary")
       );
     } else {
+
+      const isHero = !(ctx.state.chains || []).length;
+      
       const specApi = globalThis.AISQSpec;
-      const quickStartRow = el("div", { style: "display: flex; overflow-x: auto; gap: 8px; margin-top: 12px; padding-bottom: 8px;" }, 
-        specApi.BUILT_IN_TEMPLATES.map(t => el("button", { 
-          style: "display: flex; flex-direction: column; align-items: flex-start; padding: 8px; border: 1px solid #ffffff16; border-radius: 6px; background: #1d1c22; min-width: 140px; cursor: pointer; text-align: left; transition: transform 0.15s;",
-          on: { click: () => startWizardWithTemplate(t.id) }
-        }, [
-          el("div", { style: "font-size: 20px; margin-bottom: 4px;", text: t.icon }),
-          el("div", { style: "font-weight: 500; font-size: 13px; color: #f5f4fa;", text: t.name }),
-          el("div", { style: "font-size: 11px; color: #a9a6b4; margin-top: 2px;", text: t.scale })
-        ]))
-      );
-      actionArea.append(el("div", { style: "width: 100%;" }, [
-        el("div", { style: "font-size: 12px; font-weight: 600; color: #a9a6b4;" }, [document.createTextNode("Quick Starts")]),
-        quickStartRow
+      const mkCard = (icon, title, desc, onClick) => el("button", {
+        className: "aisq-quickstart-card",
+        style: isHero ? "display: flex; flex-direction: column; align-items: flex-start; padding: 12px; border: 1px solid #ffffff16; border-radius: 11px; background: #1d1c22; cursor: pointer; text-align: left; transition: transform 0.15s;" 
+                      : "display: flex; flex-direction: column; align-items: flex-start; padding: 8px; border: 1px solid #ffffff16; border-radius: 6px; background: #1d1c22; min-width: 140px; cursor: pointer; text-align: left; transition: transform 0.15s;",
+        on: { click: onClick }
+      }, [
+        el("div", { style: `font-size: ${isHero ? '24px' : '20px'}; margin-bottom: ${isHero ? '8px' : '4px'};`, text: icon }),
+        el("div", { style: `font-weight: ${isHero ? '600' : '500'}; font-size: ${isHero ? '14px' : '13px'}; color: #f5f4fa; margin-bottom: ${isHero ? '4px' : '0'};`, text: title }),
+        el("div", { style: `font-size: 11px; color: #a9a6b4; line-height: 1.3; ${isHero ? '' : 'margin-top: 2px;'}`, text: desc })
+      ]);
+
+      let cardsWrap;
+      if (isHero) {
+         cardsWrap = el("div", { style: "display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;" }, [
+           mkCard("📊", "SaaS Dashboard", "B2B app with multi-tenancy", () => startWizardWithTemplate("saas-dashboard")),
+           mkCard("📁", "Portfolio", "Minimalist personal site", () => startWizardWithTemplate("portfolio")),
+           mkCard("🛒", "E-Commerce", "Shop with cart & checkout", () => startWizardWithTemplate("e-commerce")),
+           mkCard("🤖", "AI Agent", "LLM wrapper or swarm", () => startWizardWithTemplate("ai-agent")),
+           mkCard("📱", "Mobile App", "React Native or Flutter app", () => startWizardWithTemplate("mobile-social")),
+           mkCard("🎮", "Web Game", "Canvas-based game loop", () => startWizardWithTemplate("web-game"))
+         ]);
+      } else {
+         cardsWrap = el("div", { style: "display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px;" }, 
+           specApi.BUILT_IN_TEMPLATES.map(t => mkCard(t.icon, t.name, t.scale, () => startWizardWithTemplate(t.id)))
+         );
+      }
+
+      actionArea.append(el("div", { style: "width: 100%; margin-top: 12px;" }, [
+        el("div", { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;" }, [
+          el("div", { style: `font-size: ${isHero ? '16px' : '12px'}; font-weight: 600; color: ${isHero ? '#f5f4fa' : '#a9a6b4'};` }, [document.createTextNode(isHero ? "🚀 Quick Starts" : "Quick Starts")]),
+        ]),
+        cardsWrap
       ]));
+
     }
 
     return el("div", { style: "position: relative;" }, [draft, actionArea]);
