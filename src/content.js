@@ -19,6 +19,16 @@
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const textOf = (node) => String(node?.textContent || "").replace(/\s+/g, " ").trim();
 
+  const adapter = globalThis.AISQAdapter ? new globalThis.AISQAdapter.StorageAdapter(chrome.storage) : {
+    get: async (k) => { const r = await chrome.storage.local.get(k); return r[k]; },
+    set: async (k, v) => { await chrome.storage.local.set({ [k]: v }); },
+    onChanged: (cb) => {
+      const listener = (changes, areaName) => cb(changes, areaName);
+      chrome.storage.onChanged?.addListener(listener);
+      return () => chrome.storage.onChanged?.removeListener(listener);
+    }
+  };
+
   let state = Core.defaultState();
   let persistedRevision = 0;
   let rootHost = null;
@@ -158,8 +168,8 @@ currentPageKey: function(...args) { return currentPageKey(...args); },
   function enqueueSave() {
     const operation = async () => {
       Core.syncLegacyAliases(state);
-      const current = await chrome.storage.local.get(STORAGE_KEY);
-      const stored = current?.[STORAGE_KEY] ? Core.migrateState(current[STORAGE_KEY]) : null;
+      const current = await adapter.get(STORAGE_KEY);
+      const stored = current ? Core.migrateState(current) : null;
       if (stored && Number(stored.revision || 0) > persistedRevision) {
         if (compareStateVersion(stored, state) > 0) acceptStoredState(stored);
         else {
@@ -172,12 +182,11 @@ currentPageKey: function(...args) { return currentPageKey(...args); },
         return false;
       }
       const snapshot = clone(state);
-      const payload = { [STORAGE_KEY]: snapshot };
+      await adapter.set(STORAGE_KEY, snapshot);
       if (!globalThis.__AISQ_LEGACY_WRITTEN__) {
-        payload[LEGACY_STORAGE_KEY] = snapshot;
+        await adapter.set(LEGACY_STORAGE_KEY, snapshot);
         globalThis.__AISQ_LEGACY_WRITTEN__ = true;
       }
-      await chrome.storage.local.set(payload);
       persistedRevision = Number(snapshot.revision || 0);
       return true;
     };
@@ -537,7 +546,7 @@ currentPageKey: function(...args) { return currentPageKey(...args); },
     ctx.textStash = null;
     document.removeEventListener("keydown", handleKeydown, true);
     if (runtimeMessageListener) chrome.runtime.onMessage?.removeListener?.(runtimeMessageListener);
-    if (storageChangeListener) chrome.storage.onChanged?.removeListener?.(storageChangeListener);
+    if (storageChangeListener) storageChangeListener();
     ctx.releaseRunnerLease();
     rootHost?.remove();
     globalThis.__AISQ_CONTENT_LOADED__ = false;
@@ -547,13 +556,22 @@ currentPageKey: function(...args) { return currentPageKey(...args); },
   async function init() {
     try {
       await getTabId();
-      const modern = await chrome.storage.local.get(STORAGE_KEY);
-      let saved = modern?.[STORAGE_KEY];
+      let saved = await adapter.get(STORAGE_KEY);
       if (!saved) {
-        const legacy = await chrome.storage.local.get(LEGACY_STORAGE_KEY);
-        saved = legacy?.[LEGACY_STORAGE_KEY];
+        saved = await adapter.get(LEGACY_STORAGE_KEY);
       }
       state = Core.migrateState(saved);
+      if (state.runner.pendingPromptId && state.runner.ownerTabId) {
+        if (state.runner.ownerTabId === tabId && ['running', 'submitting', 'awaiting_start'].includes(state.runner.phase)) {
+           state.runner.crashRecovery = true;
+        }
+        Core.commitTransition(state, Core.EVENTS.REHYDRATED, {
+          promptId: state.runner.pendingPromptId,
+          chainId: state.runner.activeChainId,
+          previousOwner: state.runner.ownerTabId,
+          source: 'storage-hydration',
+        });
+      }
       persistedRevision = Number(state.revision || 0);
       runnerOwnedByOtherTab = false;
     } catch {
@@ -576,11 +594,10 @@ currentPageKey: function(...args) { return currentPageKey(...args); },
       return true;
     };
     chrome.runtime.onMessage.addListener(runtimeMessageListener);
-    storageChangeListener = (changes, areaName) => {
+    storageChangeListener = adapter.onChanged((changes, areaName) => {
       if (areaName !== "local" || !changes?.[STORAGE_KEY]?.newValue) return;
       acceptStoredState(changes[STORAGE_KEY].newValue);
-    };
-    chrome.storage.onChanged?.addListener(storageChangeListener);
+    });
     tickIntervalId = setInterval(() => void ctx.tick(), TICK_MS);
     globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
     void ctx.tick();

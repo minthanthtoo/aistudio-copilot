@@ -941,8 +941,48 @@
       stickyHeader,
       el("div", { className: "aisq-host-grid" }, [el("span", { text: "Page" }), el("strong", { text: host.mode }), el("span", { text: "AI Studio" }), el("strong", { text: host.lastHeader || host.state }), el("span", { text: "Turns" }), el("strong", { text: `${host.turnCount} (baseline ${ctx.state.runner.baselineTurnCount || 0})` }), el("span", { text: "Retries" }), el("strong", { text: `${ctx.state.runner.retryCount || 0}/${Number(ctx.state.settings.maxRetries || 0) === 0 ? "∞" : ctx.state.settings.maxRetries}` })]),
       ctx.runnerOwnedByOtherTab || foreignPending ? el("div", { className: "aisq-error", text: "Another AI Studio tab owns the pending runner. Recover here only in the same bound app after the original tab closes or its lease expires." }) : null,
+      ctx.state.runner.crashRecovery ? el("div", { className: "aisq-error aisq-crash-banner" }, [
+        el("strong", { text: "⚠️ Rehydrated from Crash" }),
+        el("br"),
+        el("span", { text: "The browser or extension restarted unexpectedly while the runner was active. Please verify AI Studio state before resuming." }),
+        el("br"),
+        button("Dismiss", () => { ctx.mutate(() => { ctx.state.runner.crashRecovery = false; }); }, "ghost")
+      ]) : null,
       ctx.state.runner.lastError ? el("div", { className: "aisq-error", text: ctx.state.runner.lastError }) : null,
       ctx.exportStep ? el("div", { className: "aisq-meter", text: ctx.exportStep }) : null,
+      
+      (function() {
+        if (typeof AISQAuthority !== "undefined" && AISQAuthority.inferLevel(ctx.state.settings).level < 4) {
+          return el("div", { className: "aisq-lock-banner", style: "margin: 8px 0; padding: 8px; border-left: 3px solid #fbbc04; background: #fff8e1;" }, [
+            el("strong", { text: "🔒 Architectural Review" }),
+            el("div", { text: "L4 Autonomy is locked until Phase 4 execution engine is fully complete." })
+          ]);
+        }
+        return null;
+      })(),
+
+      (function() {
+        const activeGoal = ctx.state.goals ? ctx.state.goals.find(g => g.status === 'active') : null;
+        if (activeGoal) {
+          return el("div", { className: "aisq-goal-dashboard", style: "margin: 8px 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" }, [
+            el("strong", { text: "🎯 Active Goal" }),
+            el("div", { text: activeGoal.description }),
+            el("div", { className: "aisq-meter", text: `Plan: ${activeGoal.plan.steps.length} steps` })
+          ]);
+        }
+        return null;
+      })(),
+
+      (function() {
+        if (ctx.state.memory && ctx.state.memory.learnedPreferences && ctx.state.memory.learnedPreferences.length > 0) {
+          return el("div", { className: "aisq-memory-dashboard", style: "margin: 8px 0; padding: 8px; border: 1px solid #cce5ff; border-radius: 4px; background: #e6f2ff;" }, [
+            el("strong", { text: "🧠 Learned Memory" }),
+            ...ctx.state.memory.learnedPreferences.slice(-3).map(p => el("div", { text: `• ${p.text}` }))
+          ]);
+        }
+        return null;
+      })(),
+
       el("div", { className: "aisq-actions" }, [
         button("Download ZIP", () => void ctx.downloadZip(), "ghost"),
         button("Diagnostics", ctx.downloadDiagnostics, "ghost", "Download redacted Copilot diagnostics")
@@ -966,6 +1006,19 @@
   }
 
   function renderSettings() {
+    const autonomy = el("select", { className: "aisq-select" });
+    if (typeof AISQAuthority !== "undefined") {
+      const levels = Object.values(AISQAuthority.LEVELS).sort((a, b) => a.level - b.level);
+      const currentLevel = AISQAuthority.inferLevel(ctx.state.settings);
+      for (const level of levels) {
+        const option = el("option", { value: level.name, text: `${level.name} - ${level.description}` });
+        option.selected = currentLevel.level === level.level;
+        option.disabled = level.level >= 4; // L4 locked until Phase 4
+        autonomy.append(option);
+      }
+      autonomy.disabled = true; // Read-only in Phase 3, inferred from below
+    }
+
     const failure = el("select", { className: "aisq-select" });
     for (const [value, label] of [["pause", "Pause on failure"], ["skip_prompt", "Skip failed prompt"], ["skip_chain", "Skip failed chain"]]) {
       const option = el("option", { value, text: label });
@@ -981,6 +1034,7 @@
     }
     placement.addEventListener("change", () => ctx.mutate(() => { ctx.state.settings.pastePlacement = placement.value; }));
     return el("div", { className: "aisq-section" }, [
+      field("Autonomy Level", autonomy),
       checkboxSetting("autoRun", "Continue automatically across the stack", "Turn off for one-at-a-time manual Resume control."),
       checkboxSetting("autoRetry", "Automatically retry AI Studio failures", "Retries only the newest failed turn."),
       checkboxSetting("stopAfterChain", "Pause after the current chain", "Useful for reviewing output before the next paste chain."),
@@ -1028,10 +1082,15 @@
     const foreignPending = !!(ctx.state.runner.pendingPromptId && ctx.state.runner.ownerTabId && ctx.state.runner.ownerTabId !== ctx.tabId && !ctx.leaseToken);
     
     const primaryControl = foreignPending
-      ? button("🔁 Recover", () => void ctx.recoverPendingHere(), "primary aisq-btn-highlight", "Explicitly recover the pending runner in this AI Studio app")
+      ? button("🔁 Recover", () => { ctx.mutate(() => { ctx.state.uiIntent = { action: 'recover' }; }); }, "primary aisq-btn-highlight", "Explicitly recover the pending runner in this AI Studio app")
       : !ctx.state.runner.enabled
-        ? button(startLabel, () => { void (ctx.state.runner.phase === PHASES.PAUSED ? ctx.resumeRunner() : ctx.startRunner("stack")); }, "primary aisq-btn-highlight")
-        : (ctx.leaseToken || ctx.state.runner.ownerTabId === ctx.tabId || !ctx.state.runner.ownerTabId) ? button("⏸️ Pause", ctx.pauseRunner, "aisq-btn-pause") : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
+        ? button(startLabel, () => {
+            ctx.mutate(() => {
+              if (ctx.state.runner.phase === PHASES.PAUSED) ctx.state.uiIntent = { action: 'resume' };
+              else ctx.state.uiIntent = { action: 'start', scope: 'stack' };
+            });
+          }, "primary aisq-btn-highlight")
+        : (ctx.leaseToken || ctx.state.runner.ownerTabId === ctx.tabId || !ctx.state.runner.ownerTabId) ? button("⏸️ Pause", () => { ctx.mutate(() => { ctx.state.uiIntent = { action: 'pause' }; }); }, "aisq-btn-pause") : button("🔒 Locked", () => {}, "ghost", "Runner is owned by another AI Studio tab");
 
     const host = ctx.scanHost();
     const isHostBusy = host.busy || !!host.stop;
@@ -1039,10 +1098,10 @@
       ? button("⏹️ Stop AI", stopActiveAI, "danger ghost aisq-btn-stop", "Stop current AI Studio generation immediately")
       : null;
 
-    const runSelected = button("⏏️ Run Selected", () => void ctx.startRunner("selected"), "ghost");
+    const runSelected = button("⏏️ Run Selected", () => { ctx.mutate(() => { ctx.state.uiIntent = { action: 'start', scope: 'selected' }; }); }, "ghost");
     runSelected.disabled = !isPromptsTab || ctx.state.runner.enabled || !!ctx.state.runner.pendingPromptId;
 
-    const skipCurrent = button("⏭️ Skip", ctx.skipPrompt, "ghost");
+    const skipCurrent = button("⏭️ Skip", () => { ctx.mutate(() => { ctx.state.uiIntent = { action: 'skip' }; }); }, "ghost");
     skipCurrent.disabled = !isPromptsTab || foreignPending || (ctx.state.runner.enabled && !ctx.leaseToken);
 
     const currentChain = ctx.runnerChain();
@@ -1073,6 +1132,13 @@
     }
     const hostPill = el("span", { className: modePillClass, text: modeText });
 
+    let autonomyPill = null;
+    if (typeof AISQAuthority !== "undefined") {
+      const level = AISQAuthority.inferLevel(ctx.state.settings);
+      const isL4 = level.level >= 4;
+      autonomyPill = el("span", { className: `aisq-host-badge ${isL4 ? 'aisq-l4' : ''}`, text: level.name.split(':')[0] });
+    }
+
     const controls = [primaryControl];
     if (stopAiControl) controls.push(stopAiControl);
     controls.push(runSelected, skipCurrent);
@@ -1080,10 +1146,11 @@
     return el("div", { className: "aisq-top-run-controls" }, [
       ...controls,
       el("div", { className: "aisq-top-status" }, [
+        autonomyPill,
         hostPill,
         el("span", { className: `aisq-phase aisq-phase-${ctx.state.runner.phase}`, text: phaseText }),
         el("strong", { text: targetText })
-      ])
+      ].filter(Boolean))
     ]);
   }
 

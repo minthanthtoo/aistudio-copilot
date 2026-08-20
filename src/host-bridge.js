@@ -157,6 +157,53 @@
     return cachedChatContainer;
   }
 
+  function readLastTurnContent() {
+    const chat = getChatContainer();
+    if (!chat) return null;
+    const allTurns = Array.from(chat.querySelectorAll('.turn:not(.input)'));
+    const turns = allTurns.filter(t => t.offsetParent !== null || visible(t));
+    const lastTurn = turns.at(-1);
+    if (!lastTurn) return null;
+
+    const contentBlocks = [];
+    const elements = deepQueryAll('.markdown-content > *, .code-block-wrapper, ms-file-chip', lastTurn);
+    for (const el of elements) {
+      if (!visible(el)) continue;
+      if (el.matches('.code-block-wrapper')) {
+        const code = ctx.textOf(el.querySelector('code'));
+        if (code) contentBlocks.push({ type: 'code', text: code });
+      } else if (el.matches('ms-file-chip')) {
+        const file = ctx.textOf(el);
+        if (file) contentBlocks.push({ type: 'file_edit', text: file });
+      } else {
+        const text = ctx.textOf(el);
+        if (text) contentBlocks.push({ type: 'text', text });
+      }
+    }
+    
+    return {
+      text: contentBlocks.map(b => b.text).join('\n\n'),
+      type: 'mixed',
+      blocks: contentBlocks
+    };
+  }
+
+  function checkHostHealth() {
+    let health = { ok: true, degradationLevel: 0, missing: [] };
+    const scan = scanHost();
+    if (!getChatContainer() && scan.mode === 'editor') {
+      health.ok = false;
+      health.degradationLevel = 2;
+      health.missing.push('chat-container');
+    }
+    if (!scan.textarea) {
+      health.ok = false;
+      health.degradationLevel = Math.max(health.degradationLevel, 1);
+      health.missing.push('textarea');
+    }
+    return health;
+  }
+
   function scanHost() {
     const chat = getChatContainer();
 
@@ -346,7 +393,18 @@
         turnCount: host.turnCount
       },
       chains,
-      history: ctx.state.history.map((entry) => ({ at: entry.at, kind: entry.kind }))
+      history: ctx.state.history.map((entry) => ({ at: entry.at, kind: entry.kind })),
+      eventLog: {
+        totalEntries: (ctx.state.eventLog || []).length,
+        lastEvents: (ctx.state.eventLog || []).slice(-20).map(e => ({
+          event: e.event,
+          at: e.at,
+          promptId: e.payload?.promptId || null,
+          reason: e.payload?.reason || e.payload?.message || null,
+          evidenceVerdict: e.payload?.evidence?.verdict || null
+        })),
+        circuitBreaker: typeof AISQEvidence !== "undefined" ? AISQEvidence.shouldCircuitBreak(ctx.state.eventLog) : null
+      }
     };
   }
 
@@ -375,10 +433,30 @@
     }
   }
 
+  class AIStudioAdapter {
+    constructor() {}
+    perceive() { return scanHost(); }
+    readOutput() { 
+      return readLastTurnContent() || { text: null, type: 'unknown' }; 
+    }
+    actuate(action, payload) {
+      if (action === 'SUBMIT') {
+        const host = scanHost();
+        if (host.textarea) setNativeValue(host.textarea, payload);
+        if (host.submit) robustClick(host.submit);
+        return true;
+      }
+      return false;
+    }
+  }
+  globalThis.AISQHostAdapter = new AIStudioAdapter();
+
   Object.assign(ctx, {
     downloadZip,
     createDiagnosticSnapshot,
     downloadDiagnostics,
+    readLastTurnContent,
+    checkHostHealth,
     visibleAll, visible,
     exactButton,
     waitForElement,
