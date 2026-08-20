@@ -230,12 +230,17 @@
     const thinkingText = thinkingNode ? ctx.textOf(thinkingNode) : "";
 
     // "running" class on the send button is the most reliable busy signal.
+    // We also explicitly look for a "Cancel generation" or "Stop generation" button
+    const stopBtn = Array.from(chat ? chat.querySelectorAll('button[aria-label*="Stop"], button[aria-label*="Cancel generation"], button[mattooltip*="Stop"], button[mattooltip*="Cancel generation"]') : [])
+      .find(el => el.offsetParent !== null || visible(el)) || null;
+
     const isRunning = !!(sendBtn?.classList.contains("running") ||
+      stopBtn ||
       thinkingNode ||
       (chat ? Array.from(chat.querySelectorAll('ms-gradient-spinner')).some(el => visible(el)) : false));
 
     // When running: submit = null (can't submit again), stop = the running button.
-    const stop = isRunning ? (sendBtn || deepQueryAll('button.send-button.running, button[aria-label*="Stop"]')[0] || null) : null;
+    const stop = isRunning ? (stopBtn || sendBtn || deepQueryAll('button.send-button.running, button[aria-label*="Stop"], button[aria-label*="Cancel"]')[0] || null) : null;
     const submit = mode === "editor"
       ? (isRunning ? null : sendBtn)
       : mode === "start" ? visibleAll("button.build-button")[0] || exactButton("Build") : null;
