@@ -700,7 +700,6 @@
         lastChainClick = now;
       }
     });
-    head.addEventListener("dblclick", triggerChainJump);
     card.append(head);
     return card;
   }
@@ -896,7 +895,6 @@
           lastPromptClick = now;
         }
       });
-      summary.addEventListener("dblclick", triggerJump);
       
       const moveIntroBtn = !hasPreface && prompt.text.includes("\n\n")
         ? button("✂️ Move 1st para to Preface", () => {
