@@ -98,14 +98,14 @@
     selectedChain: function(...args) { return selectedChain(...args); },
     runnerChain: function(...args) { return runnerChain(...args); },
     runnerPrompt: function(...args) { return runnerPrompt(...args); },
-currentPageKey: function(...args) { return currentPageKey(...args); },
+    currentPageKey: function(...args) { return currentPageKey(...args); },
     isAppsListUpgrade: function(...args) { return isAppsListUpgrade(...args); },
-    EXTENSION_VERSION,    pageMatchesBinding: function(...args) { return pageMatchesBinding(...args); },    saveNow: function(...args) { return saveNow(...args); },
+    EXTENSION_VERSION,
+    pageMatchesBinding: function(...args) { return pageMatchesBinding(...args); },
+    saveNow: function(...args) { return saveNow(...args); },
     textOf: function(...args) { return textOf(...args); },
     clone: function(...args) { return clone(...args); },
-    sleep: function(...args) { return sleep(...args); },
-currentPageKey: function(...args) { return currentPageKey(...args); },
-    isAppsListUpgrade: function(...args) { return isAppsListUpgrade(...args); }
+    sleep: function(...args) { return sleep(...args); }
   };
   const ctx = globalThis.AISQContext;
 
@@ -598,9 +598,11 @@ currentPageKey: function(...args) { return currentPageKey(...args); },
       if (areaName !== "local" || !changes?.[STORAGE_KEY]?.newValue) return;
       acceptStoredState(changes[STORAGE_KEY].newValue);
     });
-    tickIntervalId = setInterval(() => void ctx.tick(), TICK_MS);
+    tickIntervalId = setInterval(() => {
+      if (typeof ctx.tick === "function") void ctx.tick();
+    }, TICK_MS);
     globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
-    void ctx.tick();
+    if (typeof ctx.tick === "function") void ctx.tick();
     globalThis.__aisq = Object.freeze({ show: () => mutate(() => { state.settings.panelOpen = true; }), hide: () => mutate(() => { state.settings.panelOpen = false; }), scan: () => ctx.scanHostCached(), state: () => { Core.syncLegacyAliases(state); return clone(state); }, diagnostics: () => clone(ctx.createDiagnosticSnapshot()), tick: () => ctx.tick(), save: () => saveNow(), importText: ctx.importText });
   }
 
