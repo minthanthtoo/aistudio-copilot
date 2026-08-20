@@ -320,12 +320,39 @@
          );
       }
 
-      actionArea.append(el("div", { style: "width: 100%; margin-top: 12px;" }, [
+      const quickStartsContainer = el("div", { style: "width: 100%; margin-top: 12px;" }, [
         el("div", { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;" }, [
           el("div", { style: `font-size: ${isHero ? '16px' : '12px'}; font-weight: 600; color: ${isHero ? '#f5f4fa' : '#a9a6b4'};` }, [document.createTextNode(isHero ? "🚀 Quick Starts" : "Quick Starts")]),
         ]),
         cardsWrap
-      ]));
+      ]);
+
+      const myTemplatesArea = el("div", { style: "width: 100%; margin-top: 12px; display: none;" });
+      
+      loadUserTemplates().then(templates => {
+        if (templates && templates.length > 0) {
+          myTemplatesArea.style.display = "block";
+          
+          const tWrap = el("div", { style: "display: flex; overflow-x: auto; gap: 10px; padding-bottom: 10px;" }, 
+            templates.map(t => mkCard("🌟", t.name, "Custom Template", () => {
+              ctx.mutate(() => { 
+                ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
+                ctx.state.ui.buildView = "wizard_details";
+              });
+              ctx.requestRender();
+            }))
+          );
+
+          myTemplatesArea.append(
+            el("div", { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;" }, [
+              el("div", { style: `font-size: ${isHero ? '16px' : '12px'}; font-weight: 600; color: ${isHero ? '#f5f4fa' : '#a9a6b4'};` }, [document.createTextNode(isHero ? "🌟 My Templates" : "My Templates")]),
+            ]),
+            tWrap
+          );
+        }
+      });
+
+      actionArea.append(myTemplatesArea, quickStartsContainer);
 
     }
 
