@@ -278,14 +278,16 @@
       actionArea.append(
         el("div", { className: "aisq-meter", text: `${parsedPrompts.prompts.length} prompt(s) detected via ${parsedPrompts.strategy}` }),
         button("Add to Queue", () => {
+           if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
            const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-           if(res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); }
+           if(res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); ctx.requestRender(true); }
         }, "primary"),
         button("Add & Run ▶", () => {
+           if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
            const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
            if (res.ok) {
-             ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; });
-             void ctx.startRunner();
+             ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; ctx.state.uiIntent = { action: 'start', scope: 'stack' }; });
+             ctx.requestRender(true);
            }
         }, "ghost")
       );
@@ -657,15 +659,17 @@ function renderWizardDetails() {
     });
 
     const submit = () => {
+      if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
       const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
       const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
       if (commandResult.ok) {
         ctx.mutate(() => { ctx.state.ui.buildView = "input"; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; });
-        ctx.requestRender();
+        ctx.requestRender(true);
       }
     };
     
     const submitAndStart = () => {
+      if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
       const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
       const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
       if (commandResult.ok) {
@@ -673,8 +677,9 @@ function renderWizardDetails() {
           ctx.state.ui.buildView = "input"; 
           ctx.state.ui.specAnswers = {}; 
           ctx.state.settings.activeTab = "stack";
+          ctx.state.uiIntent = { action: 'start', scope: 'stack' };
         });
-        void ctx.startRunner();
+        ctx.requestRender(true);
       }
     };
 
