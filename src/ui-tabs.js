@@ -14,6 +14,7 @@
     if (options.value !== undefined) node.value = String(options.value);
     if (options.placeholder) node.placeholder = options.placeholder;
     if (options.checked !== undefined) node.checked = !!options.checked;
+    if (options.open !== undefined) node.open = !!options.open;
     if (options.disabled !== undefined) node.disabled = !!options.disabled;
     if (options.role) node.setAttribute("role", options.role);
     if (options.ariaLabel) node.setAttribute("aria-label", options.ariaLabel);
@@ -40,9 +41,8 @@
       alert("No prompts found.");
       return { ok: false };
     }
-    const chain = Core.makeChain({ name: options.name || "Imported Chain" });
-    if (options.preface) chain.preface = options.preface;
-    chain.prompts = parsed.prompts.map(p => Core.makePrompt(p));
+    const number = (ctx.state.chains || []).length + 1;
+    const chain = Core.makeChain(options.name || `Chain ${number}`, parsed.prompts, raw, { splitStrategy: parsed.strategy, pastedAt: Core.nowISO(), preface: options.preface || parsed.preface });
     
     const placement = ctx.state.settings.pastePlacement === "end" ? "bottom" : "after";
     const commandResult = ctx.command("IMPORT_CHAIN", { chain, placement, afterChainId: options.afterChainId || (placement === "after" ? ctx.state.selectedChainId : null) }, { history: { kind: "chain_imported", message: `Added ${chain.name} with ${parsed.prompts.length} prompt(s)`, data: { chainId: chain.id, strategy: parsed.strategy } } });
