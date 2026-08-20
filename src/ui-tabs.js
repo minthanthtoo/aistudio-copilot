@@ -363,10 +363,6 @@
         ctx.requestRender();
       }, "ghost");
 
-      details.append(
-        field("Detection mode Override", strategy),
-        el("div", { style: "margin-top: 12px;" }, [openWizardBtn]),
-        
       const myTemplatesContainer = el("div", { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;" });
       myTemplatesContainer.append(el("strong", { text: "My Saved Templates", style: "font-size: 12px; color: #a9a6b4;" }));
       
@@ -435,6 +431,9 @@
       };
       renderMyTemplates();
 
+      details.append(
+        field("Detection mode Override", strategy),
+        el("div", { style: "margin-top: 12px;" }, [openWizardBtn]),
         myTemplatesContainer,
         renderCrossProjectImport()
       );
