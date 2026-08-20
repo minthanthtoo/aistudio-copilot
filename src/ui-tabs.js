@@ -179,19 +179,9 @@
     function renderSmartInput() {
     let currentDetectType = "empty";
     
-    let placeholderText = "Paste prompts, ChatGPT share URL, JSON template, or app description...";
-    const strategy = ctx.state.ui.splitStrategy || "auto";
-    if (strategy === "stage") placeholderText = "[Stage 1]\nFirst prompt...\n\n[Stage 2]\nSecond prompt...";
-    else if (strategy === "id") placeholderText = "P001: First prompt...\nP002: Second prompt...";
-    else if (strategy === "prompt") placeholderText = "Prompt 1:\nFirst prompt...\n\nPrompt 2:\nSecond prompt...";
-    else if (strategy === "delimiter") placeholderText = "First prompt...\n---\nSecond prompt...\n***\nThird prompt...";
-    else if (strategy === "numbered") placeholderText = "1. First prompt...\n2. Second prompt...";
-    else if (strategy === "single") placeholderText = "Everything pasted here will become one single giant prompt.";
-
     const draft = el("textarea", {
       className: "aisq-draft",
       value: ctx.state.ui.draft,
-      placeholder: placeholderText,
       on: {
         input: (e) => {
           ctx.state.ui.draft = e.target.value;
@@ -228,7 +218,7 @@
     }
     strategySelect.addEventListener("change", () => {
       ctx.mutate(() => { ctx.state.ui.splitStrategy = strategySelect.value; });
-      ctx.requestRender();
+      updateSmartUI();
     });
 
     const inputWrapper = el("div", { style: "position: relative; width: 100%;" }, [draft, badgeContainer, strategySelect]);
@@ -260,6 +250,17 @@
       }
       
       currentDetectType = detectType;
+
+      // Update placeholder dynamically based on selected strategy
+      const strategy = ctx.state.ui.splitStrategy || "auto";
+      let placeholderText = "Paste prompts, ChatGPT share URL, JSON template, or app description...";
+      if (strategy === "stage") placeholderText = "[Stage 1]\nFirst prompt...\n\n[Stage 2]\nSecond prompt...";
+      else if (strategy === "id") placeholderText = "P001: First prompt...\nP002: Second prompt...";
+      else if (strategy === "prompt") placeholderText = "Prompt 1:\nFirst prompt...\n\nPrompt 2:\nSecond prompt...";
+      else if (strategy === "delimiter") placeholderText = "First prompt...\n---\nSecond prompt...\n***\nThird prompt...";
+      else if (strategy === "numbered") placeholderText = "1. First prompt...\n2. Second prompt...";
+      else if (strategy === "single") placeholderText = "Everything pasted here will become one single giant prompt.";
+      draft.placeholder = placeholderText;
 
       // Update badge
       badgeContainer.innerHTML = "";
