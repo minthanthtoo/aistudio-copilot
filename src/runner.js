@@ -24,7 +24,7 @@
     return true;
   }
 
-  function sendRuntimeMessage(message, timeoutMs = 1500) {
+  function sendRuntimeMessage(message, timeoutMs = 5000) {
     if (!chrome.runtime?.sendMessage) return Promise.resolve(null);
     return new Promise((resolve) => {
       let settled = false;
@@ -34,15 +34,18 @@
         clearTimeout(timeout);
         resolve(value || null);
       };
-      const timeout = setTimeout(() => finish(null), timeoutMs);
+      const timeout = setTimeout(() => finish({ ok: false, error: "timeout" }), timeoutMs);
       try {
         const promise = chrome.runtime.sendMessage(message, (response) => {
-          void chrome.runtime.lastError;
+          if (chrome.runtime.lastError) {
+            finish({ ok: false, error: chrome.runtime.lastError.message });
+            return;
+          }
           finish(response);
         });
-        if (promise && typeof promise.then === "function") promise.then(finish, () => finish(null));
-      } catch {
-        finish(null);
+        if (promise && typeof promise.then === "function") promise.then(finish, (err) => finish({ ok: false, error: err.message }));
+      } catch (err) {
+        finish({ ok: false, error: err.message });
       }
     });
   }
@@ -53,8 +56,14 @@
       if (acquired) ctx.leaseToken = `local-${ctx.tabId}`;
       return acquired;
     }
-    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_ACQUIRE", leaseMs: 1500 });
+    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_ACQUIRE", leaseMs: 20000 });
     if (!response?.ok) {
+      if (response && response.error && (response.error.includes("Extension context invalidated") || response.error.includes("message port closed"))) {
+        ctx.state.runner.lastError = "Extension was reloaded. Please refresh this page to continue.";
+        ctx.state.runner.enabled = false;
+        Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
+        ctx.requestRender();
+      }
       ctx.runnerOwnedByOtherTab = true;
       ctx.state.runner.ownerTabId = response?.ownerTabId !== undefined && response?.ownerTabId !== null ? String(response.ownerTabId) : ctx.state.runner.ownerTabId;
       return false;
@@ -73,8 +82,8 @@
       return true;
     }
     if (!ctx.leaseToken) return acquireRunnerLease();
-    if (Date.now() - ctx.lastLeaseHeartbeatAt < Math.floor(1500 / 4)) return true;
-    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_HEARTBEAT", token: ctx.leaseToken, leaseMs: 1500 });
+    if (Date.now() - ctx.lastLeaseHeartbeatAt < 5000) return true;
+    const response = await sendRuntimeMessage({ type: "AISQ_LEASE_HEARTBEAT", token: ctx.leaseToken, leaseMs: 20000 });
     if (!response?.ok) {
       ctx.leaseToken = null;
       ctx.runnerOwnedByOtherTab = true;
@@ -82,7 +91,13 @@
       Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
       ctx.state.runner.ownerTabId = response?.ownerTabId !== undefined && response?.ownerTabId !== null ? String(response.ownerTabId) : null;
       ctx.state.runner.leaseUpdatedAt = null;
-      ctx.state.runner.lastError = "Runner lease was lost to another AI Studio tab; execution paused before the next action";
+      
+      if (response && response.error && (response.error.includes("Extension context invalidated") || response.error.includes("message port closed"))) {
+        ctx.state.runner.lastError = "Extension was reloaded. Please refresh this page to continue.";
+      } else {
+        ctx.state.runner.lastError = `Runner lease was lost to another AI Studio tab; execution paused before the next action. (Debug: ${JSON.stringify(response)})`;
+      }
+      
       ctx.addHistory("lease_lost", ctx.state.runner.lastError);
       ctx.touchState();
       ctx.scheduleSave();

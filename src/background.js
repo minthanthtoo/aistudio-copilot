@@ -56,9 +56,19 @@ async function handleLeaseMessage(message, sender) {
   }
 
   if (message.type === "AISQ_LEASE_HEARTBEAT") {
-    if (currentExpired || current.tabId !== tabId || current.token !== message.token) {
-      return { ok: false, ownerTabId: currentExpired ? null : current?.tabId || null };
+    // If lease is expired (e.g. extension reloaded), but this tab is heartbeating, grant it the lease
+    if (currentExpired) {
+      const lease = { tabId, token: message.token, updatedAt: now, expiresAt: now + leaseDuration(message) };
+      await writeLease(lease);
+      return { ok: true, ...lease };
     }
+    
+    // Otherwise, check if someone else owns it or token mismatch
+    if (current.tabId !== tabId || current.token !== message.token) {
+      return { ok: false, ownerTabId: current?.tabId || null };
+    }
+    
+    // Extend the lease
     const lease = { ...current, updatedAt: now, expiresAt: now + leaseDuration(message) };
     await writeLease(lease);
     return { ok: true, ...lease };
