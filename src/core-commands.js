@@ -42,7 +42,34 @@
     const payload = command?.payload || {};
     const chain = payload.chainId ? getChainById(state, payload.chainId) : getSelectedChain(state);
     let result = { ok: true, value: null };
-    if (type === "IMPORT_CHAIN") {
+    if (type === "APPROVE_PLAN_IMPORT") {
+      const commitId = String(payload.commitId || "");
+      if (!commitId) return reject("Plan approval is missing a commit id");
+      if (state.ui?.lastPlanCommitId === commitId && state.ui.lastImportId) {
+        return { ok: true, value: getChainById(state, state.ui.lastImportId), duplicate: true };
+      }
+      const imported = normalizeChain(payload.chain);
+      if (!imported.prompts.length) return reject("Cannot approve an empty plan");
+      state.chains.push(imported);
+      ensureStackOrder(state);
+      const placement = payload.placement === "after" ? state.stackOrder.indexOf(payload.afterChainId) + 1 : state.stackOrder.length;
+      state.stackOrder = state.stackOrder.filter((id) => id !== imported.id);
+      const activeIndex = state.runner.enabled ? state.stackOrder.indexOf(state.runner.activeChainId) : -1;
+      const safeIndex = Math.max(activeIndex + 1, Math.max(0, Math.min(Number.isFinite(placement) ? placement : state.stackOrder.length, state.stackOrder.length)));
+      state.stackOrder.splice(safeIndex, 0, imported.id);
+      state.selectedChainId = imported.id;
+      state.ui.lastImportId = imported.id;
+      state.ui.lastPlanCommitId = commitId;
+      state.ui.planDraft = null;
+      state.ui.specAnswers = {};
+      state.ui.buildView = "input";
+      state.ui.specMode = "paste";
+      state.settings.activeTab = "stack";
+      if (payload.run) state.uiIntent = { action: "start", scope: "stack" };
+      commitTransition(state, EVENTS.PLAN_APPROVED, { commitId, chainId: imported.id, run: !!payload.run });
+      commitTransition(state, EVENTS.PLAN_QUEUED, { chainId: imported.id });
+      result.value = imported;
+    } else if (type === "IMPORT_CHAIN") {
       const imported = normalizeChain(payload.chain);
       if (!imported.prompts.length) return reject("Cannot add an empty chain");
       state.chains.push(imported);

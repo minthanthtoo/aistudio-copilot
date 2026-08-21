@@ -12,8 +12,10 @@
   const Core = globalThis.AISQCore;
   if (!Core) return;
 
-  const STORAGE_KEY = "aisqStateV2";
-  const LEGACY_STORAGE_KEY = "aisqStateV1";
+  const STORAGE_KEY = "aisqStateV3";
+  const LEGACY_STORAGE_KEY = "aisqStateV2";
+  const LEGACY_STORAGE_KEY_V1 = "aisqStateV1";
+  const LEGACY_STORAGE_KEYS = Object.freeze([LEGACY_STORAGE_KEY, LEGACY_STORAGE_KEY_V1]);
   const TICK_MS = 500;
   const LEASE_MS = 20_000;
   const PHASES = Core.PHASES;
@@ -96,6 +98,8 @@
     adapter,
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
+    LEGACY_STORAGE_KEY_V1,
+    LEGACY_STORAGE_KEYS,
     TICK_MS,
     LEASE_MS,
     ROOT_ID,
@@ -172,8 +176,9 @@
       let saved = await adapter.get(STORAGE_KEY);
       if (runtimeStopped) return;
       if (!saved) {
-        saved = await adapter.get(LEGACY_STORAGE_KEY);
+        const legacyValues = await Promise.all(LEGACY_STORAGE_KEYS.map((legacyKey) => adapter.get(legacyKey)));
         if (runtimeStopped) return;
+        saved = legacyValues.find(Boolean) || null;
       }
       state = Core.migrateState(saved);
       if (state.runner.pendingPromptId && state.runner.ownerTabId) {
@@ -212,8 +217,9 @@
     };
     chrome.runtime.onMessage.addListener(runtimeMessageListener);
     storageChangeListener = adapter.onChanged((changes, areaName) => {
-      if (areaName !== "local" || !changes?.[STORAGE_KEY]?.newValue) return;
-      ctx.acceptStoredState(changes[STORAGE_KEY].newValue);
+      if (areaName !== "local") return;
+      const change = changes?.[STORAGE_KEY] || changes?.[LEGACY_STORAGE_KEY] || changes?.[LEGACY_STORAGE_KEY_V1];
+      if (change?.newValue) ctx.acceptStoredState(change.newValue);
     });
     tickIntervalId = setInterval(() => {
       if (typeof ctx.tick === "function") {

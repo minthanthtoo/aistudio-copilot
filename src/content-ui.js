@@ -158,6 +158,29 @@
       .aisq-actions { display:flex; flex-wrap:wrap; gap:8px; }
       .aisq-button { border:1px solid #ffffff24; border-radius:9px; padding:7px 11px; background:#2b2931; color:#f5f4fa; cursor:pointer; }
       .aisq-button:hover { background:#383540; }
+      .aisq-build-mode { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 10px; padding:8px 10px; border:1px solid #ffffff16; border-radius:10px; background:#1d1c22; }
+      .aisq-build-mode strong { font-size:11px; margin-right:2px; }
+      .aisq-build-mode small { flex:1 1 180px; color:#aaa6b7; font-size:10px; }
+      .aisq-draft-plan { gap:10px; }
+      .aisq-plan-confidence { color:#9ee7bc; font-size:11px; white-space:nowrap; }
+      .aisq-plan-hero { padding:12px; border:1px solid #7357ff55; border-radius:12px; background:linear-gradient(135deg,#7357ff1c,#222128); }
+      .aisq-plan-hero strong { font-size:15px; }
+      .aisq-plan-hero p { margin:5px 0; color:#d7d3e2; white-space:pre-wrap; }
+      .aisq-plan-hero small { color:#aaa6b7; }
+      .aisq-plan-summary,.aisq-plan-section { padding:10px 12px; border:1px solid #ffffff16; border-radius:10px; background:#1d1c22; }
+      .aisq-plan-summary ul,.aisq-plan-section ul,.aisq-plan-section ol { margin:7px 0 0; padding-left:20px; color:#cbc7d6; }
+      .aisq-plan-summary li,.aisq-plan-section li { margin:3px 0; }
+      .aisq-plan-suggested { border-color:#b9a9ff44; }
+      .aisq-plan-empty { color:#9ee7bc; margin-top:5px; }
+      .aisq-plan-question { display:flex; flex-direction:column; gap:5px; margin-top:8px; }
+      .aisq-plan-question-actions { display:flex; flex-wrap:wrap; gap:6px; }
+      .aisq-plan-question-actions .aisq-button { font-size:11px; padding:5px 8px; }
+      .aisq-plan-question-count { color:#aaa6b7; }
+      .aisq-plan-actions { margin-top:2px; }
+      @media (max-width:360px) {
+        .aisq-plan-actions .aisq-button { width:100%; }
+        .aisq-plan-confidence { display:none; }
+      }
       .aisq-button:disabled { opacity:.4; cursor:not-allowed; }
       .aisq-button.primary { border-color:#8067ff; background:#6d4aff; }
       .aisq-button.ghost { background:transparent; }

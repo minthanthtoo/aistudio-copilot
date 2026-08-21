@@ -349,3 +349,19 @@ test("an active chain cannot be reset during pacing and skipped prompts require 
   assert.equal(Core.applyCommand(state, { type: "EDIT_PROMPT", payload: { chainId: chain.id, promptId: "skipped", text: "changed" } }).ok, false);
   assert.equal(Core.applyCommand(state, { type: "DELETE_PROMPT", payload: { chainId: chain.id, promptId: "skipped" } }).ok, false);
 });
+
+test("Draft Plan approval imports exactly once and is idempotent for the same commit", () => {
+  const state = Core.migrateState({});
+  const chain = Core.makeChain("Approved plan", Core.parsePromptPack("A verified plan prompt with enough implementation detail.", "single").prompts, "raw");
+  const command = { type: "APPROVE_PLAN_IMPORT", payload: { chain, commitId: "plan-commit-1", run: true } };
+  const first = Core.applyCommand(state, command);
+  assert.equal(first.ok, true);
+  assert.equal(state.chains.length, 1);
+  assert.equal(state.ui.planDraft, null);
+  assert.deepEqual(state.uiIntent, { action: "start", scope: "stack" });
+  assert.deepEqual(state.eventLog.slice(-2).map((entry) => entry.event), ["PLAN_APPROVED", "PLAN_QUEUED"]);
+  const second = Core.applyCommand(state, command);
+  assert.equal(second.ok, true);
+  assert.equal(second.duplicate, true);
+  assert.equal(state.chains.length, 1);
+});

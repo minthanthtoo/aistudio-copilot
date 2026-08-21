@@ -1,5 +1,17 @@
 # Decision log
 
+## 2026-08-21 — Make the Draft Plan the intake source of truth
+
+- Evidence: a long mandatory wizard delays the first useful review and mixes inferred values with user intent.
+- Decision: persist only versioned intent, decisions, provenance, active question, and dismissals in `ui.planDraft`; compute defaults, confidence, dependencies, stages, and generated answers.
+- Downstream effect: description, template, JSON, and ChatGPT paths converge on one deterministic Draft Plan before queueing.
+
+## 2026-08-21 — Keep Draft Plan approval atomic and local
+
+- Evidence: approval can be retried by a user or a reinjected runtime, so a visual success message is not enough to prevent duplicate chains.
+- Decision: require a commit ID in `APPROVE_PLAN_IMPORT`, make the command idempotent, and record approval/queue events in the existing local event log.
+- Tradeoff: no remote planner or analytics is introduced; consequential uncertainty remains visible and queueing fails closed only when no safe value exists.
+
 ## 2026-08-13 — Keep paste intake on Build
 
 - Evidence: the prior implementation switched to Prompts after import, so a real second paste required navigating back even though a stale DOM reference made the fixture appear uninterrupted.

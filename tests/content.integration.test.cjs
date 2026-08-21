@@ -243,6 +243,155 @@ test("wizard Add to Queue creates exactly one chain without host submission", as
   assert.equal(hostClicks, 0);
 });
 
+test("natural intake lets the user choose the original full wizard", async (t) => {
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
+  t.after(() => env.close());
+  env.window.__aisq.show();
+  await wait(40);
+  assert.ok(buttonNamed(env.shadow(), "Full Wizard"), "the workflow chooser is visible");
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Create a personal reading tracker.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  const fullAction = Array.from(env.shadow().querySelectorAll("button")).find((button) => button.textContent.trim() === "🧭 Open Full Wizard →");
+  assert.ok(fullAction, "natural intake exposes the original wizard action");
+  fullAction.click();
+  await wait(100);
+  const state = env.window.__aisq.state();
+  assert.equal(state.ui.buildView, "wizard_details");
+  assert.equal(state.ui.planDraft, null);
+  assert.equal(state.ui.specAnswers.description, "Create a personal reading tracker.");
+  assert.match(env.shadow().textContent, /App Wizard/);
+});
+
+test("draft plan is persisted as schema-v3 durable intent and rehydrates after reload", async (t) => {
+  const backend = { data: {}, listeners: new Set() };
+  const first = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>', null, { storageBackend: backend });
+  t.after(() => first.close());
+  first.window.__aisq.show();
+  await wait(40);
+  const draft = first.shadow().querySelector(".aisq-draft");
+  draft.value = "Create a low-interruption reading tracker for students.";
+  draft.dispatchEvent(new first.window.Event("input", { bubbles: true }));
+  buttonNamed(first.shadow(), "Build with Wizard").click();
+  await wait(80);
+  assert.equal(first.shadow().querySelectorAll(".aisq-plan-question").length, 1);
+  assert.match(first.shadow().textContent, /Clarification 1 of 3/);
+  assert.ok(first.window.__aisq.state().eventLog.some((entry) => entry.event === "PLAN_QUESTION_SHOWN"));
+  buttonNamed(first.shadow(), "Continue").click();
+  await wait(40);
+  assert.match(first.shadow().textContent, /Clarification 2 of 3/);
+  await first.window.__aisq.save();
+  assert.equal(backend.data.aisqStateV3.schemaVersion, 3);
+  assert.equal(backend.data.aisqStateV3.ui.planDraft.decisions.description.status, "confirmed");
+  assert.equal(backend.data.aisqStateV3.ui.planDraft.decisions.frontend, undefined, "computed defaults stay out of durable decisions");
+
+  const second = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>', null, { storageBackend: backend });
+  t.after(() => second.close());
+  const rehydrated = second.window.__aisq.state();
+  assert.equal(rehydrated.schemaVersion, 3);
+  assert.equal(rehydrated.ui.planDraft.intent.rawDescription, "Create a low-interruption reading tracker for students.");
+  assert.equal(rehydrated.ui.planDraft.decisions.description.source, "user");
+});
+
+test("draft plan question edits preserve focus and expose the narrow-layout contract", async (t) => {
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
+  t.after(() => env.close());
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Build app.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(80);
+
+  const question = env.shadow().querySelector(".aisq-plan-question");
+  const control = question.querySelector('[data-plan-key="description"]') || question.querySelector("textarea, input, select");
+  assert.ok(control, "the active clarification has a semantic form control");
+  assert.equal(control.closest("label")?.querySelector(".aisq-label")?.textContent.length > 0, true, "the control has a visible label");
+  control.focus();
+  const key = control.getAttribute("data-plan-key");
+  const editedValue = key === "description" ? "Build a focused reading tracker." : "Reading Tracker";
+  control.value = editedValue;
+  control.dispatchEvent(new env.window.Event("change", { bubbles: true }));
+  await wait(50);
+  assert.equal(env.shadow().activeElement, control, "changing a clarification does not steal keyboard focus");
+  assert.equal(env.window.__aisq.state().ui.planDraft.decisions[key].value, editedValue);
+  assert.equal(env.shadow().querySelector(".aisq-plan-question"), question, "change commits without a full rerender");
+
+  const styles = env.shadow().querySelector("style").textContent;
+  assert.match(styles, /width:min\(500px,calc\(100vw - 24px\)\)/);
+  assert.match(styles, /@media \(max-width:360px\)[\s\S]*\.aisq-plan-actions \.aisq-button \{ width:100%; \}/);
+});
+
+test("skipping a Draft Plan question records local skip and dismissal events", async (t) => {
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
+  t.after(() => env.close());
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Build app.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(80);
+  const skip = env.shadow().querySelector(".aisq-plan-question-actions .aisq-button.ghost");
+  assert.ok(skip);
+  skip.click();
+  await wait(50);
+  const events = env.window.__aisq.state().eventLog.map((entry) => entry.event);
+  assert.ok(events.includes("PLAN_QUESTION_SKIPPED"));
+  assert.ok(events.includes("PLAN_QUESTION_DISMISSED"));
+});
+
+test("schema-v2 wizard answers migrate into the v3 Draft Plan without losing intent", async (t) => {
+  const legacy = appState([], { pageKey: "app:test-app" });
+  legacy.schemaVersion = 2;
+  legacy.ui.specAnswers = { description: "Legacy dashboard", archetype: "dashboard", scale: "mvp" };
+  const backend = { data: { aisqStateV2: legacy }, listeners: new Set() };
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>', null, { storageBackend: backend });
+  t.after(() => env.close());
+  const state = env.window.__aisq.state();
+  assert.equal(state.schemaVersion, 3);
+  assert.equal(state.ui.planDraft.intent.source, "legacy");
+  assert.equal(state.ui.planDraft.decisions.archetype.status, "confirmed");
+});
+
+test("JSON and ChatGPT extraction entry paths create proposed Draft Plans", async (t) => {
+  const compact = [{ loaderData: { conversation: { serverResponse: { data: { linear_conversation: [
+    { message: { author: { role: "user" }, content: { parts: ["Build a student dashboard"] } } },
+    { message: { author: { role: "assistant" }, content: { parts: ["- Add a progress chart"] } } }
+  ] } } } } }];
+  const html = `streamController.enqueue(${JSON.stringify(JSON.stringify(compact))})`;
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>', null, {
+    sendMessage: (message, callback) => {
+      if (message?.type === "AISQ_GET_TAB_ID") {
+        callback?.({ tabId: "chatgpt-fixture" });
+        return Promise.resolve({ tabId: "chatgpt-fixture" });
+      }
+      return Promise.resolve({ ok: true, html });
+    }
+  });
+  t.after(() => env.close());
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = JSON.stringify({ name: "JSON starter", description: "A JSON-imported app", archetype: "dashboard" });
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Load as Template").click();
+  await wait(60);
+  assert.equal(env.window.__aisq.state().ui.planDraft.intent.source, "template");
+  assert.equal(env.window.__aisq.state().ui.planDraft.decisions.name.status, "proposed");
+
+  buttonNamed(env.shadow(), "← Back").click();
+  await wait(40);
+  const secondDraft = env.shadow().querySelector(".aisq-draft");
+  secondDraft.value = "https://chatgpt.com/share/12345678901234567890";
+  secondDraft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Fetch & Analyze ChatGPT Link").click();
+  await wait(100);
+  assert.equal(env.window.__aisq.state().ui.planDraft.intent.source, "extractor");
+  assert.equal(env.window.__aisq.state().ui.planDraft.decisions.description.status, "proposed");
+});
+
 test("root-present reinjection stops the prior runtime before mounting exactly one replacement", async (t) => {
   const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
   t.after(() => env.close());
@@ -391,7 +540,7 @@ test("start-page queue imports, fills through input events, and clicks Build onc
   });
   build.addEventListener("click", () => {
     buildClicks += 1;
-    persistedPhaseAtClick = env.storage.aisqStateV2?.runner?.phase || null;
+    persistedPhaseAtClick = env.storage.aisqStateV3?.runner?.phase || null;
   });
 
   const shadow = env.shadow();
@@ -416,7 +565,7 @@ test("start-page queue imports, fills through input events, and clicks Build onc
   assert.ok(inputEvents >= 1);
   assert.equal(buildClicks, 1);
   assert.equal(persistedPhaseAtClick, null, "project-scoped runners are persisted under the page-keyed runners map");
-  assert.equal(env.storage.aisqStateV2.runners["app:test-app"].phase, Core.PHASES.AWAITING);
+  assert.equal(env.storage.aisqStateV3.runners["app:test-app"].phase, Core.PHASES.AWAITING);
   const runnerState = env.window.__aisq.state();
   assert.equal(runnerState.runner.phase, Core.PHASES.AWAITING);
   assert.equal(runnerState.queues[0].prompts[0].status, "pending");
@@ -720,7 +869,7 @@ test("Settings controls update and persist runner policy without touching host s
   assert.equal(updated.settings.autoRun, false);
   assert.equal(updated.settings.maxRetries, 4);
   assert.equal(updated.settings.failurePolicy, "skip_chain");
-  assert.equal(env.storage.aisqStateV2.settings.failurePolicy, "skip_chain");
+  assert.equal(env.storage.aisqStateV3.settings.failurePolicy, "skip_chain");
   assert.equal(env.window.document.querySelector('button[aria-label="Send"]').getAttribute("aria-disabled"), "false");
 });
 
@@ -883,7 +1032,7 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   };
   const chain = Core.makeChain("Bound app", Core.parsePromptPack("Build one app-bound recovery fixture.", "single").prompts, "fixture");
   const state = appState([chain], { settings: { panelOpen: true, activeTab: "run" } });
-  const backend = { data: { aisqStateV2: structuredClone(state) }, listeners: new Set() };
+  const backend = { data: { aisqStateV3: structuredClone(state) }, listeners: new Set() };
   const body = '<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="false">Build</button>';
   const first = await createEnvironment(body, null, { storageBackend: backend, sendMessage: sender(11) });
   const second = await createEnvironment(body, null, { storageBackend: backend, sendMessage: sender(22) });
@@ -950,7 +1099,7 @@ test("pending recovery refuses a different AI Studio app before acquiring a leas
 
 test("sequential queue edits synchronize across open AI Studio tabs", async (t) => {
   const initial = appState();
-  const backend = { data: { aisqStateV2: structuredClone(initial) }, listeners: new Set() };
+  const backend = { data: { aisqStateV3: structuredClone(initial) }, listeners: new Set() };
   const first = await createEnvironment("", null, { storageBackend: backend });
   const second = await createEnvironment("", null, { storageBackend: backend });
   t.after(() => { first.close(); second.close(); });
@@ -974,7 +1123,7 @@ test("sequential queue edits synchronize across open AI Studio tabs", async (t) 
 
 test("a stale tab cannot overwrite a newer queue revision", async (t) => {
   const initial = appState();
-  const backend = { data: { aisqStateV2: structuredClone(initial) }, listeners: new Set() };
+  const backend = { data: { aisqStateV3: structuredClone(initial) }, listeners: new Set() };
   const first = await createEnvironment("", null, { storageBackend: backend });
   const second = await createEnvironment("", null, { storageBackend: backend });
   t.after(() => { first.close(); second.close(); });
@@ -983,12 +1132,12 @@ test("a stale tab cannot overwrite a newer queue revision", async (t) => {
 
   first.window.__aisq.importText("Authoritative chain created in tab one.", "single", { name: "Authoritative" });
   await wait(160);
-  assert.equal(backend.data.aisqStateV2.projects["app:test-app"].chains.length, 1);
+  assert.equal(backend.data.aisqStateV3.projects["app:test-app"].chains.length, 1);
 
   second.window.__aisq.importText("A stale conflicting chain from tab two.", "single", { name: "Stale conflict" });
   await wait(180);
-  assert.equal(backend.data.aisqStateV2.projects["app:test-app"].chains.length, 1);
-  assert.equal(backend.data.aisqStateV2.projects["app:test-app"].chains[0].name, "Authoritative");
+  assert.equal(backend.data.aisqStateV3.projects["app:test-app"].chains.length, 1);
+  assert.equal(backend.data.aisqStateV3.projects["app:test-app"].chains[0].name, "Authoritative");
   assert.equal(second.window.__aisq.state().chains[0].name, "Authoritative");
   assert.match(second.window.__aisq.state().runner.lastError, /newer queue change/i);
 });

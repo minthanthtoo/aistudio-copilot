@@ -1,6 +1,6 @@
 (function initAISQCoreConstants(global) {
   "use strict";
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
   const PHASES = Object.freeze({
     IDLE: "idle",
     READY: "ready",
@@ -40,6 +40,12 @@
     REHYDRATED:            'REHYDRATED',
     // Dynamic chains
     PLAN_RECEIVED:         'PLAN_RECEIVED',
+    PLAN_APPROVED:         'PLAN_APPROVED',
+    PLAN_QUESTION_SHOWN:   'PLAN_QUESTION_SHOWN',
+    PLAN_QUESTION_ACCEPTED:'PLAN_QUESTION_ACCEPTED',
+    PLAN_QUESTION_SKIPPED: 'PLAN_QUESTION_SKIPPED',
+    PLAN_QUESTION_DISMISSED:'PLAN_QUESTION_DISMISSED',
+    PLAN_QUEUED:            'PLAN_QUEUED',
     CHAIN_INJECTED:        'CHAIN_INJECTED',
     REPAIR_INJECTED:       'REPAIR_INJECTED',
     // User commands

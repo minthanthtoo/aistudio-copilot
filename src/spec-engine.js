@@ -389,6 +389,7 @@ REQUIREMENTS:
       features: true,
       design: true,
       screens: true,
+      audience: true,
       techStack: scaleIdx >= 1,
       security: scaleIdx >= 3,
       advanced: scaleIdx >= 4
@@ -409,6 +410,8 @@ REQUIREMENTS:
       if (/education|school/i.test(answers.industry)) preface += `- FERPA compliance and accessibility (WCAG 2.1 AA) are mandatory.\n`;
       preface += `\n`;
     }
+
+    if (answers.audience) preface += `Primary Audience: ${answers.audience}\n\n`;
 
     
     preface += `Technical Constraints:\n`;
@@ -464,7 +467,7 @@ REQUIREMENTS:
 
   const VALID_TEMPLATE_KEYS = new Set([
     "name", "description", "archetype", "scale", "features", "featureChips",
-    "genre", "mobileFirst", "darkMode", "productionQuality", "screens",
+    "genre", "mobileFirst", "darkMode", "productionQuality", "screens", "audience",
     "frontend", "backend", "database", "hosting", "security", "industry",
     "authType", "flowDescription", "stageOverrides"
   ]);

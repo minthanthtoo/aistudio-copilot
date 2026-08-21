@@ -249,6 +249,14 @@ test("Industry field produces HIPAA hint", () => {
   assert.match(preface, /HIPAA compliance/);
 });
 
+test("Audience is visible, preserved in templates, and affects the generated preface", () => {
+  assert.equal(AISQSpec.getVisibleSections({ scale: "hobby" }).audience, true);
+  const preface = AISQSpec.buildPreface({ name: "Reader", description: "Track books", audience: "Students" });
+  assert.match(preface, /Primary Audience: Students/);
+  const encoded = AISQSpec.serializeTemplate({ name: "Reader", audience: "Students" });
+  assert.deepEqual(AISQSpec.deserializeTemplate(encoded), { name: "Reader", audience: "Students" });
+});
+
 test("deserializeTemplate rejects prototype pollution", () => {
   const bad = '{"__proto__":{"x":1},"name":"ok"}';
   const res = AISQSpec.deserializeTemplate(bad);

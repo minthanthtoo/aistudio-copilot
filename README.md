@@ -17,7 +17,7 @@ AI Studio Copilot helps you manage, stack, and automate complex prompt chains. W
 - **Compact Media Player Mode**: Collapse the UI into a sleek, floating control bar (`▶️ Start`, `⏸️ Pause`, `⏭️ Skip`) to manage your chains without cluttering your screen.
 - **Multi-Tab Safe**: A lightweight service worker ensures only one tab runs at a time, preventing cross-tab conflicts and synchronizing state across windows.
 - **ZIP Export**: Quickly download your generated app with the click of a button (`Alt+D`).
-- **(Coming Soon) Spec Generation Wizard**: An intelligent, adaptive workflow to generate tailored, production-ready prompt chains for web apps, SaaS, and enterprise systems.
+- **Choice of build workflow**: Use the low-interruption Draft Plan intake or explicitly choose the original Full Wizard form. Both accept app descriptions, templates, JSON, and ChatGPT extraction, then queue verified prompt chains.
 
 ## 🚀 Installation
 
@@ -55,7 +55,7 @@ npm install
 npm run verify
 ```
 
-The 81-test suite runs entirely in Node using `jsdom` and the native Node test runner, validating DOM state-machine transitions, multi-tab coordination, route migration, reinjection, lease fencing, and queue logic.
+The 98-test suite runs entirely in Node using `jsdom` and the native Node test runner, validating both build workflows, Draft Plan provenance and migration, DOM state-machine transitions, multi-tab coordination, route migration, reinjection, lease fencing, and queue logic.
 
 To package a clean `.zip` for distribution:
 ```bash

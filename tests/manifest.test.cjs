@@ -38,6 +38,13 @@ test("manifest is a narrow MV3 extension with core loaded before the content run
   }
 });
 
+test("packaging derives runtime source files from the manifest contract", () => {
+  const source = fs.readFileSync(path.join(root, "scripts/package-extension.cjs"), "utf8");
+  assert.match(source, /manifest\.content_scripts\.flatMap\(\(entry\) => entry\.js/);
+  assert.ok(contentFiles.includes("src/plan-engine.js"));
+  assert.ok(contentFiles.includes("src/ui-draft-plan.js"));
+});
+
 test("toolbar action and command message only an active AI Studio Apps tab", async () => {
   const source = fs.readFileSync(path.join(root, "src/background.js"), "utf8");
   let actionListener;

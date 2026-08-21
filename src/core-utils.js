@@ -10,7 +10,10 @@
     if (clone.message && clone.message.length > 300)
       clone.message = clone.message.slice(0, 300) + '…';
     for (const key of Object.keys(clone)) {
-      if (clone[key] instanceof Node) delete clone[key];
+      // Core is also exercised in a plain Node VM where the DOM global is
+      // absent. Guard the cross-world DOM check so event logging remains a
+      // pure, portable operation.
+      if (typeof Node !== "undefined" && clone[key] instanceof Node) delete clone[key];
     }
     return clone;
   }

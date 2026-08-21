@@ -1,18 +1,32 @@
 # Release checklist
 
+## v0.4.0 Draft Plan release
+
+- [x] Manifest, package, and lockfile versions match `0.4.0`.
+- [x] State schema v2 migrates to v3 without dropping legacy wizard answers.
+- [x] Description, built-in template, JSON, and ChatGPT extraction paths create Draft Plans with provenance.
+- [x] Draft Plan questions are deterministic, dependency-aware, and capped at three.
+- [x] The original Full Wizard remains user-selectable from the visible Build workflow chooser and natural-intake action.
+- [x] Assumption approval imports exactly one chain and the Run variant sets one run intent atomically.
+- [x] Draft Plan question events remain local to the existing event log.
+
 ## Source and automated gates
 
 - [x] Manifest, package, and lockfile versions match.
 - [x] `npm run icons` succeeds and manifest PNG dimensions validate.
 - [x] `npm audit --omit=dev` reports zero vulnerabilities.
-- [x] `npm run verify` passes with the current 81-test suite, including manifest-order integration, wizard exact-once flows, route migration, reinjection, and keyed lease fencing.
+- [x] `npm run verify` passes with the current 98-test suite, including both workflow choices, Draft Plan migration/provenance, manifest-order integration, wizard exact-once flows, route migration, reinjection, and keyed lease fencing.
 - [x] No `innerHTML`, `eval`, remote executable code, broad host permission, or unbounded retry loop is present.
 - [x] Every confirmed production failure has a regression test.
 
 ## Signed-in Chrome gates
 
-- [ ] Reload the unpacked project and confirm the footer shows the source version.
+- [ ] Reload the unpacked project and confirm the footer shows `v0.4.0`.
 - [ ] Toolbar click mounts/toggles Queue Pilot in a tab open before reload and a fresh AI Studio Apps tab.
+- [ ] Describe an app and confirm the Draft Plan appears immediately with no more than three questions.
+- [ ] Change or skip a question, reload, and confirm the Draft Plan and provenance rehydrate.
+- [ ] Approve assumptions to Add to Queue and confirm exactly one chain; repeat with Approve assumptions & Run and confirm exactly one host submission.
+- [ ] Load a template and verify proposed assumptions remain visibly distinguishable until approval.
 - [ ] Paste A=(A1,A2), B=(B1), and C=(C1,C2) without leaving Build.
 - [ ] Reorder C before B and prove A1 → A2 → C1 → C2 → B1 in transcript/output.
 - [ ] Select another chain while running and confirm runner ownership does not move.
@@ -30,3 +44,4 @@
 - [x] Re-run the package command and confirm the checksum is identical.
 - [x] Record the archive path and SHA-256 in the final handoff.
 - [x] Keep the previous archive available for rollback; do not publish without explicit authorization.
+- [x] Preserve the pre-existing untracked `dist/ai-studio-queue-pilot-0.3.7.zip.sha256` sidecar.

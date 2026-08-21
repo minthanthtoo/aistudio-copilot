@@ -107,9 +107,12 @@
   function renderBuild() {
     ctx.state.ui.specAnswers = ctx.state.ui.specAnswers || {};
     ctx.state.ui.draft = ctx.state.ui.draft || "";
-    ctx.state.ui.buildView = ctx.state.ui.buildView || "input"; // "input", "wizard_details", "advanced"
+    ctx.state.ui.buildView = ctx.state.ui.buildView || "input"; // "input", "plan_details", "wizard_details"
     
     
+    if (ctx.state.ui.buildView === "plan_details") {
+      return ctx.renderDraftPlanDetails();
+    }
     if (ctx.state.ui.buildView === "wizard_details") {
       return ctx.renderWizardDetails();
     }
@@ -122,24 +125,38 @@
     return smartInputContainer;
   }
 
-  function startWizardWithTemplate(templateId) {
-    const specApi = globalThis.AISQSpec;
-    const t = specApi.BUILT_IN_TEMPLATES.find(x => x.id === templateId);
-    if (!t) return;
+  function openWizardWithAnswers(answers, source = "template") {
+    const fullWizard = ctx.state.ui.wizardMode === "full";
     ctx.mutate(() => {
-      ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
-      ctx.state.ui.buildView = "wizard_details";
+      ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(answers || {}));
+      ctx.state.ui.planDraft = fullWizard ? null : globalThis.AISQPlan.createDraft(source, answers || {});
+      ctx.state.ui.buildView = fullWizard ? "wizard_details" : "plan_details";
+      ctx.state.ui.specMode = fullWizard ? "legacy" : "draft";
     });
     ctx.requestRender();
   }
 
+  function startWizardWithTemplate(templateId) {
+    const specApi = globalThis.AISQSpec;
+    const t = specApi.BUILT_IN_TEMPLATES.find(x => x.id === templateId);
+    if (!t) return;
+    openWizardWithAnswers(t.answers, "template");
+  }
+
   function startWizardWithDescription(desc) {
     if (!desc.trim()) return;
-    ctx.mutate(() => {
-      ctx.state.ui.specAnswers = { description: desc.trim() };
-      ctx.state.ui.buildView = "wizard_details";
-    });
-    ctx.requestRender();
+    openWizardWithAnswers({ rawDescription: desc.trim(), description: desc.trim() }, "user");
+  }
+
+  function renderWizardModeChooser() {
+    const mode = ctx.state.ui.wizardMode === "full" ? "full" : "plan";
+    const choose = (next) => ctx.mutate(() => { ctx.state.ui.wizardMode = next; });
+    return el("div", { className: "aisq-build-mode", attrs: { role: "group", "aria-label": "Build workflow" } }, [
+      el("strong", { text: "Choose workflow" }),
+      button("Draft Plan", () => choose("plan"), mode === "plan" ? "primary" : "ghost", "Use the Draft Plan workflow"),
+      button("Full Wizard", () => choose("full"), mode === "full" ? "primary" : "ghost", "Use the original full wizard form"),
+      el("small", { text: mode === "full" ? "The original step-by-step form is selected." : "Draft Plan is the low-interruption workflow." })
+    ]);
   }
 
     function renderSmartInput() {
@@ -161,7 +178,7 @@
              if (currentDetectType === "prompts") {
                 const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
                 if (res.ok) { 
-                  ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); 
+                  ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.ui.planDraft = null; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; });
                   if (e.shiftKey) { ctx.mutate(()=>{ ctx.state.uiIntent = { action: 'start', scope: 'stack' }; }); }
                   ctx.requestRender(true);
                 }
@@ -251,13 +268,9 @@
               const extractorApi = globalThis.AISQChatGPTExtractor;
               const conversation = extractorApi.extractConversation(rawHtml, source);
               const specAnswers = extractorApi.analyzeTranscript(conversation);
-              ctx.mutate(() => {
-                ctx.state.ui.draft = "";
-                ctx.state.ui.specAnswers = specAnswers;
-                ctx.state.ui.buildView = "wizard_details";
-                ctx.toast(`✅ Extracted ${conversation.visibleMessages.length} messages`, "success");
-              });
-              ctx.requestRender(true);
+              ctx.state.ui.draft = "";
+              openWizardWithAnswers(specAnswers, "extractor");
+              ctx.toast(`✅ Extracted ${conversation.visibleMessages.length} messages`, "success");
            } catch(e) {
               ctx.toast(`Error: ${e.message}`, "error");
            }
@@ -267,13 +280,9 @@
            const specApi = globalThis.AISQSpec;
            const parsed = specApi.deserializeTemplate(val);
            if (parsed) {
-             ctx.mutate(() => { 
-               ctx.state.ui.specAnswers = parsed;
-               ctx.state.ui.draft = "";
-               ctx.state.ui.buildView = "wizard_details";
-               ctx.toast("✅ Template loaded", "success");
-             });
-             ctx.requestRender(true);
+             ctx.state.ui.draft = "";
+             openWizardWithAnswers(parsed, "template");
+             ctx.toast("✅ Template loaded", "success");
            } else {
              ctx.toast("Invalid template JSON.", "error");
            }
@@ -284,20 +293,24 @@
           button("Add to Queue", () => {
              if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
              const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
-             if(res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; }); ctx.requestRender(true); }
+             if(res.ok) { ctx.mutate(()=>{ ctx.state.ui.draft = ""; ctx.state.ui.planDraft = null; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; }); ctx.requestRender(true); }
           }, "primary"),
           button("Add & Run ▶", () => {
              if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
              const res = importText(ctx.state.ui.draft, ctx.state.ui.splitStrategy);
              if (res.ok) {
-               ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.settings.activeTab = "stack"; ctx.state.uiIntent = { action: 'start', scope: 'stack' }; });
+               ctx.mutate(() => { ctx.state.ui.draft = ""; ctx.state.ui.planDraft = null; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; ctx.state.uiIntent = { action: 'start', scope: 'stack' }; });
                ctx.requestRender(true);
              }
           }, "ghost")
         );
       } else if (detectType === "natural") {
         actionArea.append(
-          button("✨ Build with Wizard →", () => startWizardWithDescription(val), "primary")
+          button("✨ Build with Wizard → (Draft Plan)", () => startWizardWithDescription(val), "primary"),
+          button("🧭 Open Full Wizard →", () => {
+            ctx.mutate(() => { ctx.state.ui.wizardMode = "full"; });
+            startWizardWithDescription(val);
+          }, "ghost")
         );
       }
 
@@ -346,11 +359,7 @@
         templatesArea.style.display = "block";
         const tWrap = el("div", { style: "display: flex; overflow-x: auto; gap: 10px; padding-bottom: 10px;" }, 
           templates.map(t => mkCard("🌟", t.name, "Custom Template", () => {
-            ctx.mutate(() => { 
-              ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
-              ctx.state.ui.buildView = "wizard_details";
-            });
-            ctx.requestRender(true);
+            openWizardWithAnswers(t.answers, "template");
           }))
         );
         templatesArea.append(
@@ -363,7 +372,7 @@
     });
 
     updateSmartUI(); // initial evaluation
-    return el("div", { style: "position: relative;" }, [inputWrapper, actionArea, extraContentArea]);
+    return el("div", { style: "position: relative;" }, [renderWizardModeChooser(), inputWrapper, actionArea, extraContentArea]);
   }
 
   function renderAdvancedSection() {
@@ -403,11 +412,7 @@
               el("span", { style: "font-size: 12px; font-weight: 500; color: #f5f4fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", text: t.name }),
               el("div", { style: "display: flex; gap: 6px;" }, [
                 button("Use", () => {
-                  ctx.mutate(() => { 
-                    ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(t.answers));
-                    ctx.state.ui.buildView = "wizard_details";
-                  });
-                  ctx.requestRender();
+                  openWizardWithAnswers(t.answers, "template");
                 }, "primary"),
                 button("Export", () => {
                   const json = globalThis.AISQSpec.serializeTemplate(t.answers);
@@ -437,10 +442,7 @@
         reader.onload = (event) => {
           const parsed = globalThis.AISQSpec.deserializeTemplate(event.target.result);
           if (parsed) {
-            ctx.mutate(() => { 
-              ctx.state.ui.specAnswers = parsed;
-              ctx.state.ui.buildView = "wizard_details";
-            });
+            openWizardWithAnswers(parsed, "template");
             ctx.toast("Template imported successfully", "success");
             ctx.requestRender();
           } else {

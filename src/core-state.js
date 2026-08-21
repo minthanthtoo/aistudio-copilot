@@ -83,7 +83,7 @@
       runners: {},
       runner: defaultRunner(),
       settings: defaultSettings(),
-      ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, specMode: "paste", specScreen: 0, specAnswers: {} },
+      ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, lastPlanCommitId: null, specMode: "paste", specScreen: 0, specAnswers: {}, planMode: "draft", planDraft: null, wizardMode: "plan" },
       history: [],
       eventLog: [],
       // Compatibility aliases. syncLegacyAliases keeps these references aligned.
@@ -269,6 +269,8 @@
       }
     }
 
+    const legacyAnswers = raw.ui?.specAnswers && typeof raw.ui.specAnswers === "object" ? raw.ui.specAnswers : {};
+    const planDraft = global.AISQPlan?.migrateDraft?.(raw.ui?.planDraft, legacyAnswers) || null;
     const state = {
       ...base,
       ...raw,
@@ -278,7 +280,7 @@
       projects,
       runners,
       settings: { ...base.settings, ...(raw.settings || {}) },
-      ui: { ...base.ui, ...(raw.ui || {}) },
+      ui: { ...base.ui, ...(raw.ui || {}), planDraft },
       history: Array.isArray(raw.history) ? raw.history.slice(-300) : [],
       eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-400) : []
     };
