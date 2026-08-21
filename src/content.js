@@ -3,10 +3,6 @@
   console.log("[AISQ] content.js started execution.");
 
   const ROOT_ID = "aisq-extension-root";
-  if (globalThis.__AISQ_CONTENT_LOADED__ && document.getElementById(ROOT_ID)) {
-    console.log("[AISQ] content.js aborted: already loaded.");
-    return;
-  }
   if (globalThis.__AISQ_CONTENT_LOADED__) {
     console.log("[AISQ] content.js stopping old runtime.");
     globalThis.__AISQ_RUNTIME__?.stop?.();
@@ -53,8 +49,10 @@
   let exportStep = null;
   let tabId = `local-${Core.uid("tab")}`;
   let leaseToken = null;
+  let leaseKey = null;
   let lastLeaseHeartbeatAt = 0;
   let runnerOwnedByOtherTab = false;
+  let runtimeStopped = false;
   const clickedOptInControls = new WeakSet();
 
   globalThis.AISQContext = {
@@ -88,6 +86,8 @@
     set tabId(v) { tabId = v; },
     get leaseToken() { return leaseToken; },
     set leaseToken(v) { leaseToken = v; },
+    get leaseKey() { return leaseKey; },
+    set leaseKey(v) { leaseKey = v; },
     get lastLeaseHeartbeatAt() { return lastLeaseHeartbeatAt; },
     set lastLeaseHeartbeatAt(v) { lastLeaseHeartbeatAt = v; },
     get runnerOwnedByOtherTab() { return runnerOwnedByOtherTab; },
@@ -98,27 +98,11 @@
     LEGACY_STORAGE_KEY,
     TICK_MS,
     LEASE_MS,
-    
-    // Core functions
-    addHistory: function(...args) { return addHistory(...args); },
-    enqueueSave: function(...args) { return enqueueSave(...args); },
-    touchState: function(...args) { return touchState(...args); },
-    toast: function(...args) { return toast(...args); },
-    scheduleSave: function(...args) { return scheduleSave(...args); },
-    mutate: function(...args) { return mutate(...args); },
-    command: function(...args) { return command(...args); },
-    requestRender: function(...args) { return requestRender(...args); },
-    selectedChain: function(...args) { return selectedChain(...args); },
-    runnerChain: function(...args) { return runnerChain(...args); },
-    runnerPrompt: function(...args) { return runnerPrompt(...args); },
-    currentPageKey: function(...args) { return currentPageKey(...args); },
-    isAppsListUpgrade: function(...args) { return isAppsListUpgrade(...args); },
+    ROOT_ID,
     EXTENSION_VERSION,
-    pageMatchesBinding: function(...args) { return pageMatchesBinding(...args); },
-    saveNow: function(...args) { return saveNow(...args); },
-    textOf: function(...args) { return textOf(...args); },
-    clone: function(...args) { return clone(...args); },
-    sleep: function(...args) { return sleep(...args); }
+    textOf,
+    clone,
+    sleep
   };
   const ctx = globalThis.AISQContext;
 
@@ -129,7 +113,7 @@
   function handleKeydown(event) {
     if (event.key === "Escape" && rootHost?.contains(event.target)) {
       event.preventDefault();
-      mutate(() => {
+      ctx.mutate(() => {
         if (state.settings.activeTab === "build" && state.ui && state.ui.buildView && state.ui.buildView !== "input") {
           state.ui.buildView = "input";
         } else {
@@ -140,7 +124,7 @@
     }
     if (event.altKey && event.shiftKey && event.code === "KeyA") {
       event.preventDefault();
-      mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; });
+      ctx.mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; });
     } else if (event.altKey && event.key?.toLowerCase() === "d") {
       event.preventDefault();
       void ctx.downloadZip();
@@ -165,6 +149,8 @@
   }
 
   function stopRuntime() {
+    if (runtimeStopped) return;
+    runtimeStopped = true;
     clearTimeout(saveTimer);
     if (tickIntervalId) clearInterval(tickIntervalId);
     ctx.activeCountdown = null;
@@ -172,18 +158,22 @@
     document.removeEventListener("keydown", handleKeydown, true);
     if (runtimeMessageListener) chrome.runtime.onMessage?.removeListener?.(runtimeMessageListener);
     if (storageChangeListener) storageChangeListener();
-    ctx.releaseRunnerLease();
+    ctx.releaseRunnerLease?.();
     rootHost?.remove();
     globalThis.__AISQ_CONTENT_LOADED__ = false;
     if (globalThis.__AISQ_RUNTIME__?.stop === stopRuntime) globalThis.__AISQ_RUNTIME__ = null;
   }
 
   async function init() {
+    if (runtimeStopped) return;
     try {
       await getTabId();
+      if (runtimeStopped) return;
       let saved = await adapter.get(STORAGE_KEY);
+      if (runtimeStopped) return;
       if (!saved) {
         saved = await adapter.get(LEGACY_STORAGE_KEY);
+        if (runtimeStopped) return;
       }
       state = Core.migrateState(saved);
       if (state.runner.pendingPromptId && state.runner.ownerTabId) {
@@ -199,19 +189,21 @@
       }
       persistedRevision = Number(state.revision || 0);
       runnerOwnedByOtherTab = false;
-    } catch {
-      state = Core.defaultState();
+    } catch (error) {
+      console.warn("[AISQ] Could not hydrate saved state; starting with an empty migrated state.", error);
+      state = Core.migrateState();
     }
-    mount();
+    if (runtimeStopped) return;
+    ctx.mount();
     document.addEventListener("keydown", handleKeydown, true);
     runtimeMessageListener = (message, sender, sendResponse) => {
       if (message?.type === "AISQ_TOGGLE") {
-        mount();
-        mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; });
+        ctx.mount();
+        ctx.mutate(() => { state.settings.panelOpen = !state.settings.panelOpen; });
         sendResponse?.({ ok: true, mounted: true });
       } else if (message?.type === "AISQ_SHOW") {
-        mount();
-        mutate(() => { state.settings.panelOpen = true; });
+        ctx.mount();
+        ctx.mutate(() => { state.settings.panelOpen = true; });
         sendResponse?.({ ok: true, mounted: true });
       } else if (message?.type === "AISQ_STATUS") {
         sendResponse?.({ ok: true, mounted: !!rootHost, phase: state.runner.phase });
@@ -221,25 +213,34 @@
     chrome.runtime.onMessage.addListener(runtimeMessageListener);
     storageChangeListener = adapter.onChanged((changes, areaName) => {
       if (areaName !== "local" || !changes?.[STORAGE_KEY]?.newValue) return;
-      acceptStoredState(changes[STORAGE_KEY].newValue);
+      ctx.acceptStoredState(changes[STORAGE_KEY].newValue);
     });
     tickIntervalId = setInterval(() => {
       if (typeof ctx.tick === "function") {
-        checkUrlUpgrade();
+        ctx.checkUrlUpgrade();
         void ctx.tick();
       } else {
         console.error("[AISQ] INTERVAL ERROR: ctx.tick is not a function! It is:", typeof ctx.tick);
       }
     }, TICK_MS);
-    globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
     if (typeof ctx.tick === "function") {
-      checkUrlUpgrade();
+      ctx.checkUrlUpgrade();
         void ctx.tick();
     } else {
       console.error("[AISQ] SYNC ERROR: ctx.tick is not a function! It is:", typeof ctx.tick);
     }
-    globalThis.__aisq = Object.freeze({ show: () => mutate(() => { state.settings.panelOpen = true; }), hide: () => mutate(() => { state.settings.panelOpen = false; }), scan: () => ctx.scanHostCached(), state: () => { Core.syncLegacyAliases(state); return clone(state); }, diagnostics: () => clone(ctx.createDiagnosticSnapshot()), tick: () => ctx.tick(), save: () => saveNow(), importText: ctx.importText });
+    globalThis.__aisq = Object.freeze({
+      show: () => ctx.mutate(() => { state.settings.panelOpen = true; }),
+      hide: () => ctx.mutate(() => { state.settings.panelOpen = false; }),
+      scan: () => ctx.scanHostCached(),
+      state: () => { Core.syncLegacyAliases(state); return clone(state); },
+      diagnostics: () => clone(ctx.createDiagnosticSnapshot()),
+      tick: () => ctx.tick(),
+      save: () => ctx.saveNow(),
+      importText: (...args) => ctx.importText(...args)
+    });
   }
 
   ctx.init = init;
+  globalThis.__AISQ_RUNTIME__ = Object.freeze({ stop: stopRuntime });
 })();

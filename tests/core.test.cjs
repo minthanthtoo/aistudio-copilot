@@ -135,7 +135,107 @@ test("state migration retains queues while filling new safe defaults", () => {
   assert.equal(migrated.queues.length, 1);
   assert.equal(migrated.settings.maxRetries, 7);
   assert.equal(migrated.settings.autoFix, false);
-  assert.equal(migrated.runner.phase, Core.PHASES.IDLE);
+  assert.equal(migrated.runner.phase, Core.PHASES.READY);
+});
+
+test("empty storage migration creates usable project and runner aliases", () => {
+  const migrated = Core.migrateState(null);
+  assert.deepEqual(migrated.chains, []);
+  assert.deepEqual(migrated.stackOrder, []);
+  assert.equal(migrated.selectedChainId, null);
+  assert.equal(migrated.runner.phase, Core.PHASES.READY);
+});
+
+test("AI Studio route variants share stable semantic page keys", () => {
+  const routes = new Map([
+    ["/apps", "app:home"],
+    ["/apps/", "app:home"],
+    ["/app/apps", "app:home"],
+    ["/apps/example-app", "app:example-app"],
+    ["/app/apps/example-app", "app:example-app"],
+    ["/prompts", "prompt:home"],
+    ["/app/prompts/", "prompt:home"],
+    ["/prompts/example-prompt", "prompt:example-prompt"],
+    ["/app/prompts/example-prompt", "prompt:example-prompt"],
+    ["/unrelated", "root"]
+  ]);
+  for (const [route, expected] of routes) assert.equal(Core.pageKeyForPath(route), expected, route);
+  assert.equal(Core.pageKeyForPath("/apps/example-app?mode=edit"), "app:example-app");
+  assert.equal(Core.normalizePageKey("app:existing"), "app:existing");
+});
+
+test("v0.3.6 root-scoped work migrates once without overwriting a canonical target", () => {
+  const previousWindow = global.window;
+  global.window = { location: { pathname: "/apps/example-app" } };
+  try {
+    const chain = Core.makeChain("Legacy", [Core.normalizePrompt({ text: "Preserve this queued task." })]);
+    const runner = {
+      ...Core.defaultRunner(),
+      phase: Core.PHASES.AWAITING,
+      enabled: true,
+      activeChainId: chain.id,
+      pendingPromptId: chain.prompts[0].id,
+      boundPageKey: "/apps/example-app"
+    };
+    const migrated = Core.migrateState({
+      projects: { root: { chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id } },
+      runners: { root: runner }
+    });
+    assert.equal(migrated.projects.root, undefined);
+    assert.equal(migrated.projects["app:example-app"].chains[0].id, chain.id);
+    assert.equal(migrated.runners.root, undefined);
+    assert.equal(migrated.runners["app:example-app"].boundPageKey, "app:example-app");
+
+    const homeBound = Core.migrateState({
+      projects: { root: { chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id } },
+      runners: { root: { ...runner, boundPageKey: "app:home" } }
+    });
+    assert.equal(homeBound.projects["app:example-app"].chains[0].id, chain.id);
+    assert.equal(homeBound.runners["app:example-app"].pendingPromptId, chain.prompts[0].id);
+    assert.equal(homeBound.runners["app:example-app"].boundPageKey, "app:home");
+
+    global.window.location.pathname = "/apps/other-app";
+    const boundElsewhere = Core.migrateState({
+      projects: { root: { chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id } },
+      runners: { root: runner }
+    });
+    assert.equal(boundElsewhere.projects["app:example-app"].chains[0].id, chain.id);
+    assert.equal(boundElsewhere.runners["app:example-app"].pendingPromptId, chain.prompts[0].id);
+    assert.equal(boundElsewhere.projects.root, undefined);
+    assert.equal(boundElsewhere.runners.root, undefined);
+    global.window.location.pathname = "/apps/example-app";
+
+    const existing = { chains: [], stackOrder: [], selectedChainId: null };
+    const conflict = Core.migrateState({
+      projects: { root: { chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id }, "app:example-app": existing },
+      runners: { root: runner, "app:example-app": { ...Core.defaultRunner(), phase: Core.PHASES.PAUSED } }
+    });
+    assert.equal(conflict.projects.root.chains[0].id, chain.id);
+    assert.equal(conflict.projects["app:example-app"].chains.length, 0);
+    assert.equal(conflict.runners.root.pendingPromptId, chain.prompts[0].id);
+    assert.equal(conflict.runners["app:example-app"].phase, Core.PHASES.PAUSED);
+
+    const projectOnlyConflict = Core.migrateState({
+      projects: { root: { chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id }, "app:example-app": existing },
+      runners: { root: runner }
+    });
+    assert.equal(projectOnlyConflict.projects.root.chains[0].id, chain.id);
+    assert.equal(projectOnlyConflict.runners.root.pendingPromptId, chain.prompts[0].id);
+    assert.equal(projectOnlyConflict.projects["app:example-app"].chains.length, 0);
+    assert.equal(projectOnlyConflict.runners["app:example-app"].pendingPromptId, null);
+
+    const runnerOnlyConflict = Core.migrateState({
+      projects: { root: { chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id } },
+      runners: { root: runner, "app:example-app": { ...Core.defaultRunner(), phase: Core.PHASES.PAUSED } }
+    });
+    assert.equal(runnerOnlyConflict.projects.root.chains[0].id, chain.id);
+    assert.equal(runnerOnlyConflict.runners.root.pendingPromptId, chain.prompts[0].id);
+    assert.equal(runnerOnlyConflict.projects["app:example-app"].chains.length, 0);
+    assert.equal(runnerOnlyConflict.runners["app:example-app"].phase, Core.PHASES.PAUSED);
+  } finally {
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+  }
 });
 
 test("corrupt partial state migration repairs stack order and pending ownership idempotently", () => {

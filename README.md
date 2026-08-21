@@ -55,7 +55,7 @@ npm install
 npm run verify
 ```
 
-The 40-test suite runs entirely in Node using `jsdom` and the native Node test runner, validating DOM state-machine transitions, multi-tab coordination, and queue logic.
+The 81-test suite runs entirely in Node using `jsdom` and the native Node test runner, validating DOM state-machine transitions, multi-tab coordination, route migration, reinjection, lease fencing, and queue logic.
 
 To package a clean `.zip` for distribution:
 ```bash

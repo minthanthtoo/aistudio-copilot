@@ -1,6 +1,7 @@
 "use strict";
 
-const CONTENT_FILES = ["src/core-constants.js", "src/core-utils.js", "src/core-state.js", "src/core-selectors.js", "src/core-commands.js","src/core-parser.js","src/spec-data.js","src/spec-engine.js","src/chatgpt-extractor.js","src/evidence.js","src/authority.js","src/goal.js","src/memory.js","src/adapter-interface.js","src/content.js", "src/content-state.js", "src/content-ui.js","src/host-dom.js", "src/host-bridge.js", "src/host-diagnostics.js","src/runner-lease.js", "src/runner-submission.js", "src/runner-transitions.js", "src/runner.js","src/ui-utils.js", "src/ui-tab-build.js", "src/ui-wizard.js", "src/ui-tab-stack.js", "src/ui-tab-prompts.js", "src/ui-tab-run.js", "src/ui-tab-settings.js"];
+const CONTENT_FILES = Object.freeze((chrome.runtime?.getManifest?.().content_scripts || [])
+  .find((entry) => entry.matches?.includes("https://aistudio.google.com/*"))?.js?.slice() || []);
 const LEASES_KEY = "aisqRunnerLeases";
 const DEFAULT_LEASE_MS = 20_000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -13,22 +14,16 @@ function serializedLeaseOperation(operation) {
   return result;
 }
 
-async function readLease(key) {
-  if (!chrome.storage?.session) return memoryLeases[key] || null;
+async function readLeases() {
+  if (!chrome.storage?.session) return { ...memoryLeases };
   const value = await chrome.storage.session.get(LEASES_KEY);
-  return (value?.[LEASES_KEY] || {})[key] || null;
+  return { ...(value?.[LEASES_KEY] || {}) };
 }
 
-async function writeLease(key, lease) {
-  if (lease) memoryLeases[key] = lease;
-  else delete memoryLeases[key];
-  
+async function writeLeases(leases) {
+  memoryLeases = { ...leases };
   if (!chrome.storage?.session) return;
-  const current = await chrome.storage.session.get(LEASES_KEY);
-  const leases = current?.[LEASES_KEY] || {};
-  if (lease) leases[key] = lease;
-  else delete leases[key];
-  await chrome.storage.session.set({ [LEASES_KEY]: leases });
+  await chrome.storage.session.set({ [LEASES_KEY]: { ...leases } });
 }
 
 function leaseDuration(message) {
@@ -42,9 +37,10 @@ function leaseToken(tabId) {
 async function handleLeaseMessage(message, sender) {
   const tabId = sender?.tab?.id;
   if (!Number.isInteger(tabId)) return { ok: false, error: "Runner lease requires an AI Studio tab" };
-  const key = message.key || 'root';
+  const key = String(message.key || "root");
   const now = Date.now();
-  const current = await readLease(key);
+  const leases = await readLeases();
+  const current = leases[key] || null;
   const currentExpired = !current || Number(current.expiresAt || 0) <= now;
 
   if (message.type === "AISQ_LEASE_ACQUIRE") {
@@ -53,19 +49,18 @@ async function handleLeaseMessage(message, sender) {
     }
     const lease = {
       tabId,
-      token: current?.tabId === tabId && current?.token ? current.token : leaseToken(tabId),
+      token: !currentExpired && current?.tabId === tabId && current?.token ? current.token : leaseToken(tabId),
       updatedAt: now,
       expiresAt: now + leaseDuration(message)
     };
-    await writeLease(key, lease);
+    leases[key] = lease;
+    await writeLeases(leases);
     return { ok: true, ...lease };
   }
 
   if (message.type === "AISQ_LEASE_HEARTBEAT") {
     if (currentExpired) {
-      const lease = { tabId, token: message.token, updatedAt: now, expiresAt: now + leaseDuration(message) };
-      await writeLease(key, lease);
-      return { ok: true, ...lease };
+      return { ok: false, ownerTabId: null, error: "Runner lease is missing or expired" };
     }
     
     if (current.tabId !== tabId || current.token !== message.token) {
@@ -73,16 +68,54 @@ async function handleLeaseMessage(message, sender) {
     }
     
     const lease = { ...current, updatedAt: now, expiresAt: now + leaseDuration(message) };
-    await writeLease(key, lease);
+    leases[key] = lease;
+    await writeLeases(leases);
     return { ok: true, ...lease };
   }
 
   if (message.type === "AISQ_LEASE_RELEASE") {
-    if (current && current.tabId === tabId && (!message.token || current.token === message.token)) await writeLease(key, null);
+    if (!current) return { ok: true };
+    if (current.tabId !== tabId || !message.token || current.token !== message.token) {
+      return { ok: false, ownerTabId: current.tabId, error: "Runner lease token does not match" };
+    }
+    delete leases[key];
+    await writeLeases(leases);
     return { ok: true };
   }
 
+  if (message.type === "AISQ_LEASE_MOVE") {
+    const fromKey = String(message.fromKey || "");
+    const toKey = String(message.toKey || "");
+    if (!fromKey || !toKey) return { ok: false, error: "Runner lease move requires both keys" };
+    const source = leases[fromKey] || null;
+    const sourceExpired = !source || Number(source.expiresAt || 0) <= now;
+    if (sourceExpired || source.tabId !== tabId || !message.token || source.token !== message.token) {
+      return { ok: false, ownerTabId: source?.tabId || null, error: "Runner lease move source does not match" };
+    }
+    const target = leases[toKey] || null;
+    const targetExpired = !target || Number(target.expiresAt || 0) <= now;
+    if (fromKey !== toKey && !targetExpired) {
+      return { ok: false, ownerTabId: target.tabId, expiresAt: target.expiresAt };
+    }
+    const lease = { ...source, updatedAt: now, expiresAt: now + leaseDuration(message) };
+    if (fromKey !== toKey) delete leases[fromKey];
+    leases[toKey] = lease;
+    await writeLeases(leases);
+    return { ok: true, key: toKey, ...lease };
+  }
+
   return { ok: false, error: "Unknown lease operation" };
+}
+
+async function removeLeasesForTab(tabId) {
+  const leases = await readLeases();
+  let changed = false;
+  for (const [key, lease] of Object.entries(leases)) {
+    if (lease?.tabId !== tabId) continue;
+    delete leases[key];
+    changed = true;
+  }
+  if (changed) await writeLeases(leases);
 }
 
 if (chrome.runtime?.onMessage?.addListener) {
@@ -105,7 +138,7 @@ if (chrome.runtime?.onMessage?.addListener) {
         .catch(err => sendResponse({ ok: false, error: err.message }));
       return true; // async response
     }
-    if (!["AISQ_LEASE_ACQUIRE", "AISQ_LEASE_HEARTBEAT", "AISQ_LEASE_RELEASE"].includes(message?.type)) return false;
+    if (!["AISQ_LEASE_ACQUIRE", "AISQ_LEASE_HEARTBEAT", "AISQ_LEASE_RELEASE", "AISQ_LEASE_MOVE"].includes(message?.type)) return false;
     serializedLeaseOperation(() => handleLeaseMessage(message, sender)).then(sendResponse, (error) => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   });
@@ -118,7 +151,7 @@ if (chrome.runtime?.onInstalled?.addListener) {
         for (const tab of tabs) {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ["src/core-constants.js", "src/core-utils.js", "src/core-state.js", "src/core-selectors.js", "src/core-commands.js", "src/spec-engine.js", "src/chatgpt-extractor.js", "src/content.js", "src/content-state.js", "src/content-ui.js"]
+            files: CONTENT_FILES
           }).catch(() => {});
         }
       });
@@ -129,8 +162,7 @@ if (chrome.runtime?.onInstalled?.addListener) {
 if (chrome.tabs?.onRemoved?.addListener) {
   chrome.tabs.onRemoved.addListener((tabId) => {
     void serializedLeaseOperation(async () => {
-      const current = await readLease();
-      if (current?.tabId === tabId) await writeLease(null);
+      await removeLeasesForTab(tabId);
     });
   });
 }

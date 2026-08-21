@@ -1,5 +1,17 @@
 # Signed-in live verification record
 
+## 0.3.8 release audit (2026-08-21)
+
+Current-source verification completed in the production-order harness:
+
+- `npm run verify`: 81/81 tests passed, including wizard exact-once flows, keyed lease fencing, route migration, panel minimize/show/hide, root-present reinjection, and async-hydration reinjection.
+- `npm audit --omit=dev`: zero vulnerabilities.
+- Manifest, package, and lockfile versions: `0.3.8`.
+- Reproducible archive: `dist/ai-studio-queue-pilot-0.3.8.zip`.
+- SHA-256: recorded in the adjacent `.zip.sha256` sidecar and final release handoff.
+
+Live host compatibility was inspected in a signed-in AI Studio Apps session. The current `/apps` route exposed the expected app-description textarea and Build control. The in-app browser did not have the unpacked extension loaded. The available local Chrome profile contains a separate v0.3.5 unpacked copy, so the 0.3.8 extension was not loaded into that persistent profile without explicit authorization. The signed-in extension gates below remain intentionally open.
+
 Live checks were performed in the user-authorized Chrome session against Google AI Studio Apps on 2026-08-03.
 
 ## Toolbar and injection

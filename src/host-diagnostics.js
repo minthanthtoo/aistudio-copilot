@@ -151,15 +151,15 @@
 
   class AIStudioAdapter {
     constructor() {}
-    perceive() { return scanHost(); }
-    readOutput() { 
-      return readLastTurnContent() || { text: null, type: 'unknown' }; 
+    perceive() { return ctx.scanHost(); }
+    readOutput() {
+      return ctx.readLastTurnContent() || { text: null, type: 'unknown' };
     }
     actuate(action, payload) {
       if (action === 'SUBMIT') {
-        const host = scanHost();
-        if (host.textarea) setNativeValue(host.textarea, payload);
-        if (host.submit) robustClick(host.submit);
+        const host = ctx.scanHost();
+        if (host.textarea) ctx.setNativeValue(host.textarea, payload);
+        if (host.submit) ctx.robustClick(host.submit);
         return true;
       }
       return false;

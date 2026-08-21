@@ -2,7 +2,7 @@
   "use strict";
   const Core = global.AISQCore;
   const { EVENTS, PHASES, PROMPT_STATUSES, SCHEMA_VERSION } = Core;
-  const { nowISO, uid, truncatePayload, getChainById, getSelectedChain, makeChain, normalizeChain, ensureStackOrder, chainIsLocked, promptIsLocked, extractCommonPreface, syncLegacyAliases, nextStackTarget, nextChainTarget, getRunnerChain, getRunnerPrompt, inferStatus, chainCounts } = Core;
+  const { nowISO, uid, truncatePayload, normalizeText, labelForPrompt, getChainById, getSelectedChain, findChainForPrompt, nextQueuedPrompt, makeChain, normalizeChain, normalizePrompt, ensureStackOrder, chainIsLocked, promptIsLocked, extractCommonPreface, syncLegacyAliases, nextStackTarget, nextChainTarget, getRunnerChain, getRunnerPrompt, inferStatus, chainCounts } = Core;
 
   function commitTransition(state, event, payload = {}) {
     if (!EVENTS[event]) throw new Error(`Unknown event: ${event}`);

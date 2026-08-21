@@ -16,10 +16,10 @@
       case "begin_settle":
         Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.SETTLING });
         ctx.state.runner.settleUntil = Date.now() + ctx.state.settings.settleMs;
-        ctx.state.runner.lastHostState = host.lastHeader || "Completed; verifying stable ctx.state";
+        ctx.state.runner.lastHostState = host.lastHeader || "Completed; verifying stable state";
         break;
       case "complete_prompt": {
-        if (!prompt || !chain) return markPromptError("Completion arrived without a pending prompt");
+        if (!prompt || !chain) return ctx.markPromptError("Completion arrived without a pending prompt");
         prompt.status = "complete";
         prompt.completedAt = Core.nowISO();
         prompt.error = null;
@@ -27,17 +27,17 @@
         ctx.addHistory("completed", `Completed ${prompt.label}`, { chainId: chain.id, promptId: prompt.id, header: host.lastHeader });
         ctx.state.runner.pendingPromptId = null;
         ctx.state.runner.retryCount = 0;
-        const target = nextTarget();
+        const target = ctx.nextTarget();
         ctx.state.runner.nextTarget = target ? { chainId: target.chain.id, promptId: target.prompt.id } : null;
         const sameChain = target && target.chain.id === chain.id;
         if (!target) {
-          finishRun();
+          ctx.finishRun();
         } else if (ctx.state.settings.stopAfterChain && !sameChain) {
           Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
           ctx.state.runner.enabled = false;
           ctx.state.runner.lastHostState = "Chain complete; stopped before the next chain";
           ctx.state.runner.ownerTabId = null;
-          releaseRunnerLease();
+          ctx.releaseRunnerLease();
           ctx.addHistory("chain_pause", `Stopped after ${chain.name}`);
         } else if (ctx.state.settings.autoRun) {
           Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PACING });
@@ -48,7 +48,7 @@
           ctx.state.runner.nextActionAt = null;
           ctx.state.runner.lastHostState = "Prompt complete; manual Resume is enabled";
           ctx.state.runner.ownerTabId = null;
-          releaseRunnerLease();
+          ctx.releaseRunnerLease();
         }
         break;
       }
@@ -61,7 +61,7 @@
         ctx.addHistory("retry_scheduled", `Retry ${ctx.state.runner.retryCount}/${retryMaxLabel} scheduled`, { promptId: prompt?.id || null });
         break;
       case "retry_now":
-        if (!host.retry || !ctx.visible(host.retry)) return markPromptError("Retry control disappeared");
+        if (!host.retry || !ctx.visible(host.retry)) return ctx.markPromptError("Retry control disappeared");
         ctx.state.runner.baselineTurnCount = host.turnCount;
         ctx.state.runner.submittedAt = Date.now();
         ctx.state.runner.sawBusy = false;
@@ -79,9 +79,9 @@
           prompt.status = "skipped";
           prompt.error = decision.message || host.errorText || "Skipped after failure";
           ctx.state.runner.pendingPromptId = null;
-          const target = nextTarget();
+          const target = ctx.nextTarget();
           ctx.state.runner.nextTarget = target ? { chainId: target.chain.id, promptId: target.prompt.id } : null;
-          if (!target) finishRun("Stack completed after skipping a failed prompt");
+          if (!target) ctx.finishRun("Stack completed after skipping a failed prompt");
           else if (ctx.state.settings.autoRun) {
             Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PACING });
             ctx.state.runner.nextActionAt = Date.now() + ctx.state.settings.interPromptDelayMs;
@@ -89,15 +89,15 @@
             ctx.state.runner.enabled = false;
             Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
             ctx.state.runner.ownerTabId = null;
-            releaseRunnerLease();
+            ctx.releaseRunnerLease();
           }
           ctx.addHistory("failure_skipped", `Skipped failed prompt ${prompt.label}`);
         } else if (policy === "skip_chain" && chain) {
           for (const item of chain.prompts) if (["queued", "error", "pending"].includes(item.status)) item.status = "skipped";
           ctx.state.runner.pendingPromptId = null;
-          const target = nextTarget();
+          const target = ctx.nextTarget();
           ctx.state.runner.nextTarget = target ? { chainId: target.chain.id, promptId: target.prompt.id } : null;
-          if (!target) finishRun("Stack completed after skipping a failed chain");
+          if (!target) ctx.finishRun("Stack completed after skipping a failed chain");
           else if (ctx.state.settings.autoRun) {
             Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PACING });
             ctx.state.runner.nextActionAt = Date.now() + ctx.state.settings.interChainDelayMs;
@@ -105,16 +105,16 @@
             ctx.state.runner.enabled = false;
             Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
             ctx.state.runner.ownerTabId = null;
-            releaseRunnerLease();
+            ctx.releaseRunnerLease();
           }
           ctx.addHistory("failure_chain_skipped", `Skipped failed chain ${chain.name}`);
         } else {
-          markPromptError(decision.message || "AI Studio run failed");
+          ctx.markPromptError(decision.message || "AI Studio run failed");
         }
         break;
       }
       case "timeout":
-        markPromptError(decision.message || "AI Studio run failed");
+        ctx.markPromptError(decision.message || "AI Studio run failed");
         break;
       case "pacing_complete":
         Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: ctx.state.settings.autoRun ? PHASES.READY : PHASES.PAUSED });
@@ -133,7 +133,7 @@
     // Auto-allow
     if (ctx.state.settings.autoAllowAccess && (!ctx.activeCountdown || ctx.activeCountdown.type === "allow")) {
       const allow = ctx.visibleAll("button").find((button) => /^Allow access$/i.test(ctx.textOf(button)));
-      if (allow && enabled(allow) && !ctx.clickedOptInControls.has(allow)) {
+      if (allow && ctx.enabled(allow) && !ctx.clickedOptInControls.has(allow)) {
         if (!ctx.activeCountdown) {
           ctx.activeCountdown = { type: "allow", button: allow, expires: Date.now() + 3000 };
           ctx.requestRender();
@@ -154,9 +154,9 @@
     // Auto-fix
     if (ctx.state.settings.autoFix && (!ctx.activeCountdown || ctx.activeCountdown.type === "autofix")) {
       const fix = ctx.visibleAll("button").find((button) => /^(Auto-fix|Autofix|Auto fix|Fix error)$/i.test(ctx.textOf(button)));
-      if (fix && enabled(fix) && !ctx.clickedOptInControls.has(fix)) {
+      if (fix && ctx.enabled(fix) && !ctx.clickedOptInControls.has(fix)) {
         if (!ctx.activeCountdown) {
-          stashText();
+          ctx.stashText();
           ctx.activeCountdown = { type: "autofix", button: fix, expires: Date.now() + 3000 };
           ctx.requestRender();
         } else if (Date.now() >= ctx.activeCountdown.expires) {
@@ -164,12 +164,12 @@
           ctx.robustClick(fix);
           ctx.addHistory("host_action", `Clicked ${ctx.textOf(fix)}`);
           ctx.activeCountdown = null;
-          setTimeout(restoreText, 2600);
+          setTimeout(() => ctx.restoreText(), 2600);
           changed = true;
           ctx.requestRender();
         }
       } else if (ctx.activeCountdown?.type === "autofix") {
-        restoreText();
+        ctx.restoreText();
         ctx.activeCountdown = null;
         ctx.requestRender();
       }

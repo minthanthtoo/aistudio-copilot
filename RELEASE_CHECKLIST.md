@@ -5,7 +5,7 @@
 - [x] Manifest, package, and lockfile versions match.
 - [x] `npm run icons` succeeds and manifest PNG dimensions validate.
 - [x] `npm audit --omit=dev` reports zero vulnerabilities.
-- [x] `npm run verify` passes with the current 40-test suite; an earlier candidate also passed four repeat runs with zero flakes on 2026-08-13.
+- [x] `npm run verify` passes with the current 81-test suite, including manifest-order integration, wizard exact-once flows, route migration, reinjection, and keyed lease fencing.
 - [x] No `innerHTML`, `eval`, remote executable code, broad host permission, or unbounded retry loop is present.
 - [x] Every confirmed production failure has a regression test.
 
@@ -25,8 +25,8 @@
 
 ## Package and handoff
 
-- [ ] Run `npm run package:extension` after the final source and documentation edits.
-- [ ] Inspect the ZIP listing; it must contain only manifest, runtime source, icons, README, and release documentation.
-- [ ] Re-run the package command and confirm the checksum is identical.
-- [ ] Record the archive path and SHA-256 in the final handoff.
-- [ ] Keep the previous archive available for rollback; do not publish without explicit authorization.
+- [x] Run `npm run package:extension` after the final source and documentation edits.
+- [x] Inspect the ZIP listing; it contains only manifest, runtime source, icons, README, and release documentation.
+- [x] Re-run the package command and confirm the checksum is identical.
+- [x] Record the archive path and SHA-256 in the final handoff.
+- [x] Keep the previous archive available for rollback; do not publish without explicit authorization.

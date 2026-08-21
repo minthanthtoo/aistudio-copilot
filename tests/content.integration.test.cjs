@@ -5,30 +5,35 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
-const Core = require("../src/core.js");
+require("../src/core-constants.js");
+require("../src/core-utils.js");
+require("../src/core-state.js");
+require("../src/core-selectors.js");
+const Core = require("../src/core-commands.js");
 require("../src/core-parser.js");
 
 const projectRoot = path.resolve(__dirname, "..");
-const coreConstantsSource = fs.readFileSync(path.join(projectRoot, "src/core-constants.js"), "utf8");
-const coreUtilsSource = fs.readFileSync(path.join(projectRoot, "src/core-utils.js"), "utf8");
-const coreStateSource = fs.readFileSync(path.join(projectRoot, "src/core-state.js"), "utf8");
-const coreSelectorsSource = fs.readFileSync(path.join(projectRoot, "src/core-selectors.js"), "utf8");
-const coreCommandsSource = fs.readFileSync(path.join(projectRoot, "src/core-commands.js"), "utf8");
-const coreParserSource = fs.readFileSync(path.join(projectRoot, "src/core-parser.js"), "utf8");
-const specDataSource = fs.readFileSync(path.join(projectRoot, "src/spec-data.js"), "utf8");
-const specEngineSource = fs.readFileSync(path.join(projectRoot, "src/spec-engine.js"), "utf8");
-const contentSource = fs.readFileSync(path.join(projectRoot, "src/content.js"), "utf8");
-const contentStateSource = fs.readFileSync(path.join(projectRoot, "src/content-state.js"), "utf8");
-const contentUiSource = fs.readFileSync(path.join(projectRoot, "src/content-ui.js"), "utf8");
-const hostDomSource = fs.readFileSync(path.join(projectRoot, "src/host-dom.js"), "utf8");
-const hostBridgeSource = fs.readFileSync(path.join(projectRoot, "src/host-bridge.js"), "utf8");
-const hostDiagnosticsSource = fs.readFileSync(path.join(projectRoot, "src/host-diagnostics.js"), "utf8");
-const runnerLeaseSource = fs.readFileSync(path.join(projectRoot, "src/runner-lease.js"), "utf8");
-const runnerSubmissionSource = fs.readFileSync(path.join(projectRoot, "src/runner-submission.js"), "utf8");
-const runnerTransitionsSource = fs.readFileSync(path.join(projectRoot, "src/runner-transitions.js"), "utf8");
-const runnerSource = fs.readFileSync(path.join(projectRoot, "src/runner.js"), "utf8");
-const uiTabsSource = fs.readFileSync(path.join(projectRoot, "src/ui-tabs.js"), "utf8");
+const contentFiles = JSON.parse(fs.readFileSync(path.join(projectRoot, "manifest.json"), "utf8")).content_scripts[0].js;
+const contentSources = new Map(contentFiles.map((file) => [file, fs.readFileSync(path.join(projectRoot, file), "utf8")]));
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function buttonNamed(root, label) {
+  return Array.from(root.querySelectorAll("button")).find((button) => button.textContent.trim() === label || button.textContent.includes(label));
+}
+
+function appState(chains = [], { settings = {}, runner = {}, pageKey = "app:test-app" } = {}) {
+  const stackOrder = chains.map((chain) => chain.id);
+  return {
+    schemaVersion: Core.SCHEMA_VERSION,
+    revision: 0,
+    projects: { [pageKey]: { chains, stackOrder, selectedChainId: stackOrder[0] || null } },
+    runners: { [pageKey]: { ...Core.defaultRunner(), activeChainId: stackOrder[0] || null, ...runner } },
+    settings: { ...Core.defaultSettings(), ...settings },
+    ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, specMode: "paste", specScreen: 0, specAnswers: {} },
+    history: [],
+    eventLog: []
+  };
+}
 
 function installVisibleGeometry(window) {
   const rectangle = (element) => {
@@ -51,24 +56,45 @@ async function createEnvironment(body, initialState = null, options = {}) {
   const storage = backend.data;
   const listeners = [];
   const dom = new JSDOM(`<!doctype html><html><head></head><body>${body}</body></html>`, {
-    url: options.url || "https://aistudio.google.com/apps/test-app",
+    url: options.url || "https://aistudio.google.com/app/apps/test-app",
     runScripts: "outside-only",
     pretendToBeVisual: true
   });
   const { window } = dom;
   installVisibleGeometry(window);
+  const callbackOrPromise = (value, callback) => {
+    if (typeof callback === "function") queueMicrotask(() => callback(structuredClone(value)));
+    return Promise.resolve(structuredClone(value));
+  };
   window.chrome = {
     storage: {
       local: {
-        async get(key) {
-          return key ? { [key]: structuredClone(storage[key]) } : structuredClone(storage);
+        get(key, callback) {
+          const value = key ? { [key]: storage[key] } : storage;
+          if (options.storageGetDelayMs) {
+            return new Promise((resolve) => setTimeout(() => {
+              const cloned = structuredClone(value);
+              if (typeof callback === "function") callback(cloned);
+              resolve(cloned);
+            }, options.storageGetDelayMs));
+          }
+          return callbackOrPromise(value, callback);
         },
-        async set(values) {
-          if (options.failStorageSet) throw new Error("fixture storage write failed");
-          const changes = {};
-          for (const [key, value] of Object.entries(values)) changes[key] = { oldValue: structuredClone(storage[key]), newValue: structuredClone(value) };
-          Object.assign(storage, structuredClone(values));
-          for (const listener of backend.listeners) listener(structuredClone(changes), "local");
+        set(values, callback) {
+          const operation = () => {
+            if (options.failStorageSet) throw new Error("fixture storage write failed");
+            const changes = {};
+            for (const [key, value] of Object.entries(values)) changes[key] = { oldValue: structuredClone(storage[key]), newValue: structuredClone(value) };
+            Object.assign(storage, structuredClone(values));
+            for (const listener of backend.listeners) listener(structuredClone(changes), "local");
+          };
+          try {
+            operation();
+            if (typeof callback === "function") queueMicrotask(callback);
+            return Promise.resolve();
+          } catch (error) {
+            return Promise.reject(error);
+          }
         }
       },
       onChanged: {
@@ -79,29 +105,15 @@ async function createEnvironment(body, initialState = null, options = {}) {
     runtime: {
       ...(options.sendMessage ? { sendMessage: options.sendMessage } : {}),
       getManifest() { return { version: "test" }; },
-      onMessage: { addListener(listener) { listeners.push(listener); } }
+      onMessage: {
+        addListener(listener) { listeners.push(listener); },
+        removeListener(listener) { const index = listeners.indexOf(listener); if (index >= 0) listeners.splice(index, 1); }
+      }
     }
   };
   options.beforeContent?.(window);
-window.eval(coreConstantsSource);
-  window.eval(coreUtilsSource);
-  window.eval(coreStateSource);
-  window.eval(coreSelectorsSource);
-  window.eval(coreCommandsSource);
-  window.eval(coreParserSource);
-  window.eval(specDataSource);
-  window.eval(specEngineSource);
-  window.eval(contentSource);
-  window.eval(contentStateSource);
-  window.eval(contentUiSource);
-  window.eval(hostDomSource);
-  window.eval(hostBridgeSource);
-  window.eval(hostDiagnosticsSource);
-  window.eval(runnerLeaseSource);
-  window.eval(runnerSubmissionSource);
-  window.eval(runnerTransitionsSource);
-  window.eval(runnerSource);
-  window.eval(uiTabsSource);
+  const inject = () => contentFiles.forEach((file) => window.eval(contentSources.get(file)));
+  inject();
   await wait(120);
   return {
     dom,
@@ -110,6 +122,7 @@ window.eval(coreConstantsSource);
     listeners,
     root: () => window.document.getElementById("aisq-extension-root"),
     shadow: () => window.document.getElementById("aisq-extension-root")?.shadowRoot,
+    inject,
     close() { dom.window.__AISQ_RUNTIME__?.stop?.(); dom.window.close(); }
   };
 }
@@ -127,20 +140,18 @@ function pendingState({ baselineTurnCount = 0, retryCount = 0, settings = {} } =
   };
   const queue = Core.makeQueue("Fixture queue", [prompt], prompt.text);
   queue.id = "queue-1";
-  const state = Core.defaultState();
-  state.chains = [queue]; state.queues = [queue];
-  state.activeChainId = queue.id; state.activeQueueId = queue.id;
-  state.settings = { ...state.settings, settleMs: 30, retryDelayMs: 20, interPromptDelayMs: 20, ...settings };
-  state.runner = {
-    ...state.runner,
+  return appState([queue], {
+    settings: { settleMs: 30, retryDelayMs: 20, interPromptDelayMs: 20, ...settings },
+    runner: {
     phase: Core.PHASES.AWAITING,
     enabled: true,
+    activeChainId: queue.id,
     pendingPromptId: prompt.id,
     submittedAt: Date.now(),
     baselineTurnCount,
     retryCount
-  };
-  return state;
+    }
+  });
 }
 
 test("content script mounts an isolated shadow UI and toggles without TrustedHTML", async (t) => {
@@ -149,36 +160,220 @@ test("content script mounts an isolated shadow UI and toggles without TrustedHTM
   const root = env.root();
   assert.ok(root);
   assert.ok(root.shadowRoot);
-  assert.equal(root.shadowRoot.getElementById("aisq-panel").hidden, true);
-  assert.equal(root.shadowRoot.getElementById("aisq-panel").getAttribute("aria-label"), "AI Studio Copilot");
+  const panel = root.shadowRoot.getElementById("aisq-panel");
+  assert.equal(panel.hidden, true);
+  assert.equal(panel.getAttribute("aria-label"), "AI Studio Copilot");
+  const styles = root.shadowRoot.querySelector("style").textContent;
+  assert.match(styles, /#aisq-panel\s*\{/);
+  assert.doesNotMatch(styles, /aisq-ctx\.panel/);
   assert.equal(root.shadowRoot.getElementById("aisq-bubble").getAttribute("aria-label"), "Toggle AI Studio Copilot");
   root.shadowRoot.getElementById("aisq-bubble").click();
   await wait(40);
   assert.equal(root.shadowRoot.getElementById("aisq-panel").hidden, false);
   assert.match(root.shadowRoot.textContent, /Copilot/);
   assert.equal(root.shadowRoot.querySelectorAll('[role="tab"]').length, 5);
+  root.shadowRoot.querySelector(".aisq-window-controls button").click();
+  await wait(40);
+  assert.equal(panel.classList.contains("aisq-minimized"), true);
+  assert.match(styles, /#aisq-panel\.aisq-minimized \.aisq-tabs,/);
+  assert.doesNotMatch(styles, /#aisq-panel\.aisq-minimized \.aisq-header/);
+  const maximize = root.shadowRoot.querySelector('button[aria-label="Maximize Copilot"]');
+  assert.ok(maximize, "the header keeps an accessible maximize control");
+  maximize.click();
+  await wait(40);
+  assert.equal(panel.classList.contains("aisq-minimized"), false);
+  env.window.__aisq.hide();
+  await wait(40);
+  assert.equal(panel.hidden, true);
+  env.window.__aisq.show();
+  await wait(40);
+  assert.equal(panel.hidden, false);
 });
 
-test("stale-root reinjection stops the prior runtime before remounting", async (t) => {
+test("wizard detail flow imports one chain, starts once, and saves one template", async (t) => {
+  const env = await createEnvironment('<textarea id="start" placeholder="Describe an app and let Gemini do the rest"></textarea><button id="build" class="build-button" aria-disabled="true">Build</button>');
+  t.after(() => env.close());
+  const hostBuild = env.window.document.getElementById("build");
+  const hostInput = env.window.document.getElementById("start");
+  let hostClicks = 0;
+  hostInput.addEventListener("input", () => hostBuild.setAttribute("aria-disabled", hostInput.value.trim() ? "false" : "true"));
+  hostBuild.addEventListener("click", () => { hostClicks += 1; });
+
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Create a lightweight inventory app for a small shop.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(60);
+  assert.match(env.shadow().textContent, /App Wizard/);
+
+  const save = buttonNamed(env.shadow(), "Save as Template");
+  save.click();
+  const templateName = Array.from(env.shadow().querySelectorAll("input")).find((input) => input.placeholder === "Template name...");
+  templateName.value = "Inventory starter";
+  save.click();
+  await wait(60);
+  assert.equal(env.storage.aisqTemplates.length, 1);
+  assert.equal(env.storage.aisqTemplates[0].name, "Inventory starter");
+
+  buttonNamed(env.shadow(), "Generate & Run").click();
+  await wait(1300);
+  const state = env.window.__aisq.state();
+  assert.equal(state.chains.length, 1);
+  assert.equal(state.chains[0].prompts.length > 0, true);
+  assert.equal(hostClicks, 1);
+});
+
+test("wizard Add to Queue creates exactly one chain without host submission", async (t) => {
+  const env = await createEnvironment('<textarea id="start" placeholder="Describe an app and let Gemini do the rest"></textarea><button id="build" class="build-button" aria-disabled="false">Build</button>');
+  t.after(() => env.close());
+  let hostClicks = 0;
+  env.window.document.getElementById("build").addEventListener("click", () => { hostClicks += 1; });
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Create a personal reading tracker.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(60);
+  buttonNamed(env.shadow(), "Add to Queue").click();
+  await wait(100);
+  assert.equal(env.window.__aisq.state().chains.length, 1);
+  assert.equal(hostClicks, 0);
+});
+
+test("root-present reinjection stops the prior runtime before mounting exactly one replacement", async (t) => {
   const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
   t.after(() => env.close());
   const firstRuntime = env.window.__AISQ_RUNTIME__;
-  env.root().remove();
-env.window.eval(contentSource);
-  window.eval(contentStateSource);
-  window.eval(contentUiSource);
-  env.window.eval(hostDomSource);
-  window.eval(hostBridgeSource);
-  window.eval(hostDiagnosticsSource);
-  env.window.eval(runnerLeaseSource);
-  window.eval(runnerSubmissionSource);
-  window.eval(runnerTransitionsSource);
-  window.eval(runnerSource);
-  env.window.eval(uiTabsSource);
+  const firstRoot = env.root();
+  assert.equal(env.listeners.length, 1, "initial runtime installs one message listener");
+  env.inject();
   await wait(140);
-  assert.equal(env.window.document.querySelectorAll("#aisq-extension-root").length, 1);
+  const replacementRoot = env.root();
+  assert.equal(env.window.document.querySelectorAll("#aisq-extension-root").length, 1, "old root is removed before replacement mounts");
+  assert.equal(firstRoot.isConnected, false, "prior runtime stopped and detached its root");
   assert.ok(env.window.__AISQ_RUNTIME__);
-  assert.notEqual(env.window.__AISQ_RUNTIME__, firstRuntime);
+  assert.notEqual(env.window.__AISQ_RUNTIME__, firstRuntime, "replacement runtime is distinct");
+  assert.notEqual(replacementRoot, firstRoot);
+  assert.equal(env.listeners.length, 1, "prior message listener is removed before replacement listener is installed");
+});
+
+test("reinjection during async hydration cancels the provisional runtime", async (t) => {
+  const env = await createEnvironment("", null, { storageGetDelayMs: 200 });
+  t.after(() => env.close());
+  const provisionalRuntime = env.window.__AISQ_RUNTIME__;
+  assert.ok(provisionalRuntime, "content bootstrap exposes a stoppable provisional runtime");
+  assert.equal(env.root(), null, "the first runtime is still hydrating");
+
+  env.inject();
+  await wait(520);
+
+  assert.notEqual(env.window.__AISQ_RUNTIME__, provisionalRuntime);
+  assert.equal(env.window.document.querySelectorAll("#aisq-extension-root").length, 1);
+  assert.equal(env.listeners.length, 1, "only the replacement runtime registers a message listener");
+});
+
+test("route upgrade preserves both home and destination state when the destination is occupied", async (t) => {
+  const homeChain = Core.makeChain("Home draft", [Core.normalizePrompt({ id: "home-prompt", text: "Keep the home draft.", status: "pending" })], "home");
+  const targetChain = Core.makeChain("Saved app", [Core.normalizePrompt({ id: "target-prompt", text: "Keep the saved app.", status: "queued" })], "target");
+  const state = appState([homeChain], {
+    pageKey: "app:home",
+    runner: {
+      enabled: false,
+      phase: Core.PHASES.PAUSED,
+      activeChainId: homeChain.id,
+      pendingPromptId: "home-prompt",
+      boundPageKey: "app:home",
+      ownerTabId: "home-owner",
+      leaseUpdatedAt: Core.nowISO()
+    }
+  });
+  state.projects["app:destination"] = { chains: [targetChain], stackOrder: [targetChain.id], selectedChainId: targetChain.id };
+  state.runners["app:destination"] = { ...Core.defaultRunner(), phase: Core.PHASES.PAUSED, activeChainId: targetChain.id, lastError: "target sentinel" };
+
+  const env = await createEnvironment("", state, { url: "https://aistudio.google.com/apps" });
+  t.after(() => env.close());
+  const ctx = env.window.AISQContext;
+  ctx.leaseToken = "home-token";
+  ctx.leaseKey = "app:home";
+  ctx.state.runners["app:home"].ownerTabId = ctx.tabId;
+
+  env.window.history.pushState({}, "", "/apps/destination");
+  ctx.checkUrlUpgrade();
+  await wait(120);
+
+  const result = env.window.__aisq.state();
+  assert.equal(result.projects["app:home"].chains[0].id, homeChain.id);
+  assert.equal(result.projects["app:destination"].chains[0].id, targetChain.id);
+  assert.equal(result.runners["app:home"].enabled, false);
+  assert.equal(result.runners["app:home"].phase, Core.PHASES.PAUSED);
+  assert.equal(result.runners["app:home"].ownerTabId, null);
+  assert.equal(result.runners["app:home"].leaseUpdatedAt, null);
+  assert.match(result.runners["app:home"].lastError, /already has saved state/i);
+  assert.equal(result.runners["app:destination"].lastError, "target sentinel");
+  assert.equal(ctx.leaseToken, null);
+  assert.equal(ctx.leaseKey, null);
+});
+
+test("route upgrade moves the home project and runner together into an empty destination", async (t) => {
+  const homeChain = Core.makeChain("New app", [Core.normalizePrompt({ id: "new-app-prompt", text: "Finish the new app.", status: "pending" })], "home");
+  const state = appState([homeChain], {
+    pageKey: "app:home",
+    runner: {
+      enabled: false,
+      phase: Core.PHASES.PAUSED,
+      activeChainId: homeChain.id,
+      pendingPromptId: "new-app-prompt",
+      boundPageKey: "app:home"
+    }
+  });
+  const env = await createEnvironment("", state, { url: "https://aistudio.google.com/apps" });
+  t.after(() => env.close());
+
+  env.window.history.pushState({}, "", "/apps/new-app");
+  env.window.AISQContext.checkUrlUpgrade();
+  await wait(120);
+
+  const result = env.window.__aisq.state();
+  assert.equal(result.projects["app:home"], undefined);
+  assert.equal(result.runners["app:home"], undefined);
+  assert.equal(result.projects["app:new-app"].chains[0].id, homeChain.id);
+  assert.equal(result.runners["app:new-app"].pendingPromptId, "new-app-prompt");
+});
+
+test("route conflict does not pause a home runner owned by another tab", async (t) => {
+  const homeChain = Core.makeChain("Shared home run", [Core.normalizePrompt({ id: "shared-prompt", text: "Keep the shared run active.", status: "pending" })], "home");
+  const targetChain = Core.makeChain("Existing destination", [Core.normalizePrompt({ id: "existing-prompt", text: "Keep the destination.", status: "queued" })], "target");
+  const leaseStamp = Core.nowISO();
+  const state = appState([homeChain], {
+    pageKey: "app:home",
+    runner: {
+      enabled: true,
+      phase: Core.PHASES.AWAITING,
+      activeChainId: homeChain.id,
+      pendingPromptId: "shared-prompt",
+      boundPageKey: "app:home",
+      ownerTabId: "other-tab",
+      leaseUpdatedAt: leaseStamp
+    }
+  });
+  state.projects["app:destination"] = { chains: [targetChain], stackOrder: [targetChain.id], selectedChainId: targetChain.id };
+  state.runners["app:destination"] = { ...Core.defaultRunner(), phase: Core.PHASES.PAUSED, activeChainId: targetChain.id };
+  const env = await createEnvironment("", state, { url: "https://aistudio.google.com/apps" });
+  t.after(() => env.close());
+
+  env.window.history.pushState({}, "", "/apps/destination");
+  env.window.AISQContext.checkUrlUpgrade();
+
+  const result = env.window.__aisq.state();
+  assert.equal(result.runners["app:home"].enabled, true);
+  assert.equal(result.runners["app:home"].phase, Core.PHASES.AWAITING);
+  assert.equal(result.runners["app:home"].ownerTabId, "other-tab");
+  assert.equal(result.runners["app:home"].leaseUpdatedAt, leaseStamp);
+  assert.equal(result.projects["app:home"].chains[0].id, homeChain.id);
+  assert.equal(result.projects["app:destination"].chains[0].id, targetChain.id);
 });
 
 test("start-page queue imports, fills through input events, and clicks Build once", async (t) => {
@@ -202,11 +397,14 @@ test("start-page queue imports, fills through input events, and clicks Build onc
   const shadow = env.shadow();
   shadow.getElementById("aisq-bubble").click();
   await wait(30);
+  const splitter = shadow.querySelector(".aisq-select");
+  splitter.value = "single";
+  splitter.dispatchEvent(new env.window.Event("change", { bubbles: true }));
   const draft = shadow.querySelector(".aisq-draft");
   const promptText = "Build a small production test app with one page and no external integrations.";
   draft.value = promptText;
   draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
-  shadow.querySelector(".aisq-actions .primary").click();
+  buttonNamed(shadow, "Add to Queue").click();
   await wait(50);
   Array.from(shadow.querySelectorAll(".aisq-tab")).find((node) => node.textContent === "run").click();
   await wait(50);
@@ -214,10 +412,11 @@ test("start-page queue imports, fills through input events, and clicks Build onc
   await wait(1200);
 
   assert.equal(textarea.value, promptText);
-  assert.equal(draft.value, "");
+  assert.equal(shadow.querySelector(".aisq-draft"), null, "queue transition replaces the build intake");
   assert.ok(inputEvents >= 1);
   assert.equal(buildClicks, 1);
-  assert.equal(persistedPhaseAtClick, Core.PHASES.AWAITING);
+  assert.equal(persistedPhaseAtClick, null, "project-scoped runners are persisted under the page-keyed runners map");
+  assert.equal(env.storage.aisqStateV2.runners["app:test-app"].phase, Core.PHASES.AWAITING);
   const runnerState = env.window.__aisq.state();
   assert.equal(runnerState.runner.phase, Core.PHASES.AWAITING);
   assert.equal(runnerState.queues[0].prompts[0].status, "pending");
@@ -235,10 +434,13 @@ test("a storage commit failure prevents the irreversible host click", async (t) 
 
   env.shadow().getElementById("aisq-bubble").click();
   await wait(30);
+  const splitter = env.shadow().querySelector(".aisq-select");
+  splitter.value = "single";
+  splitter.dispatchEvent(new env.window.Event("change", { bubbles: true }));
   const draft = env.shadow().querySelector(".aisq-draft");
   draft.value = "Build a fixture that must never be clicked before durable state is committed.";
   draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
-  Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Add chain").click();
+  buttonNamed(env.shadow(), "Add to Queue").click();
   Array.from(env.shadow().querySelectorAll(".aisq-tab")).find((node) => node.textContent === "run").click();
   await wait(50);
   Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Start")).click();
@@ -253,9 +455,7 @@ test("a storage commit failure prevents the irreversible host click", async (t) 
 
 test("hidden duplicate controls are ignored and a guided-tour dialog blocks submission", async (t) => {
   const chain = Core.makeChain("Blocked fixture", Core.parsePromptPack("Build a fixture only after the visible blocker is removed.", "single").prompts, "fixture");
-  const state = Core.migrateState({ chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id });
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "run";
+  const state = appState([chain], { settings: { panelOpen: true, activeTab: "run" } });
   const env = await createEnvironment(`
     <ms-code-assistant-chat aria-hidden="true">
       <textarea id="hidden-editor" placeholder="Make changes, add new features, ask for anything"></textarea>
@@ -280,7 +480,7 @@ test("hidden duplicate controls are ignored and a guided-tour dialog blocks subm
 
 test("a persisted start submission resumes in the editor and completes only on a new successful turn", async (t) => {
   const state = pendingState({ baselineTurnCount: 0 });
-  state.runner.boundPageKey = "/apps";
+  state.runners["app:test-app"].boundPageKey = "app:home";
   const env = await createEnvironment(`
     <ms-code-assistant-chat>
       <div class="turn-container"><div class="turn"><div class="turn-header">Gemini 3.6 Flash Running for 1s</div><span>Assembling</span></div></div>
@@ -291,7 +491,7 @@ test("a persisted start submission resumes in the editor and completes only on a
 
   await wait(650);
   assert.equal(env.window.__aisq.state().runner.phase, Core.PHASES.RUNNING);
-  assert.equal(env.window.__aisq.state().runner.boundPageKey, "/apps/test-app");
+  assert.equal(env.window.__aisq.state().runner.boundPageKey, "app:test-app");
   const header = env.window.document.querySelector(".turn-header");
   header.textContent = "Gemini 3.6 Flash Ran for 9s";
   env.window.document.querySelector(".turn span").textContent = "Done";
@@ -405,10 +605,8 @@ test("ZIP helper follows Code to Export options to the exact archive item", asyn
 });
 
 test("manual mode completes one prompt and waits for an explicit Resume before filling the next", async (t) => {
-  const state = pendingState({ baselineTurnCount: 0, settings: { autoRun: false } });
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "run";
-  state.queues[0].prompts.push({
+  const state = pendingState({ baselineTurnCount: 0, settings: { autoRun: false, panelOpen: true, activeTab: "run" } });
+  state.projects["app:test-app"].chains[0].prompts.push({
     id: "prompt-2",
     label: "Second fixture prompt",
     text: "Build the second verified fixture feature.",
@@ -441,7 +639,7 @@ test("manual mode completes one prompt and waits for an explicit Resume before f
   assert.ok(resume);
   resume.click();
   await wait(1200);
-  assert.equal(env.window.document.getElementById("manual-composer").value, state.queues[0].prompts[1].text);
+  assert.equal(env.window.document.getElementById("manual-composer").value, state.projects["app:test-app"].chains[0].prompts[1].text);
   assert.equal(sends, 1);
 });
 
@@ -450,12 +648,9 @@ test("inspecting another chain cannot redirect a selected-only runner", async (t
   const second = Core.makeChain("Inspected B", Core.parsePromptPack("This chain must remain queued and must not be submitted.", "single").prompts, "B");
   first.prompts[0].status = "pending";
   first.prompts[0].submittedAt = Core.nowISO();
-  const state = Core.migrateState({ chains: [first, second], stackOrder: [first.id, second.id], selectedChainId: first.id });
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "prompts";
-  state.settings.settleMs = 30;
-  state.runner = {
-    ...state.runner,
+  const state = appState([first, second], {
+    settings: { panelOpen: true, activeTab: "prompts", settleMs: 30 },
+    runner: {
     enabled: true,
     scope: "selected",
     scopeChainId: first.id,
@@ -464,7 +659,8 @@ test("inspecting another chain cannot redirect a selected-only runner", async (t
     phase: Core.PHASES.AWAITING,
     baselineTurnCount: 0,
     submittedAt: Date.now()
-  };
+    }
+  });
   const env = await createEnvironment(`
     <ms-code-assistant-chat>
       <div class="turn-container"><div class="turn"><div class="turn-header">Gemini 3.6 Flash Ran for 5s</div></div></div>
@@ -488,13 +684,9 @@ test("inspecting another chain cannot redirect a selected-only runner", async (t
 });
 
 test("multiple imported queues remain selectable when no prompt is pending", async (t) => {
-  const state = Core.defaultState();
   const first = Core.makeQueue("First queue", Core.parsePromptPack("First substantial standalone prompt.", "single").prompts, "first");
   const second = Core.makeQueue("Second queue", Core.parsePromptPack("Second substantial standalone prompt.", "single").prompts, "second");
-  state.queues = [first, second];
-  state.activeQueueId = first.id;
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "prompts";
+  const state = appState([first, second], { settings: { panelOpen: true, activeTab: "prompts" } });
   const env = await createEnvironment("", state);
   t.after(() => env.close());
 
@@ -509,13 +701,11 @@ test("multiple imported queues remain selectable when no prompt is pending", asy
 });
 
 test("Settings controls update and persist runner policy without touching host submit behavior", async (t) => {
-  const state = Core.defaultState();
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "settings";
+  const state = appState([], { settings: { panelOpen: true, activeTab: "settings" } });
   const env = await createEnvironment('<ms-code-assistant-chat><textarea placeholder="Make changes, add new features, ask for anything"></textarea><button aria-label="Send" aria-disabled="false"></button></ms-code-assistant-chat>', state);
   t.after(() => env.close());
   const settingLabels = Array.from(env.shadow().querySelectorAll("label"));
-  const automatic = settingLabels.find((label) => /Continue automatically across the stack/.test(label.textContent)).querySelector('input[type="checkbox"]');
+  const automatic = settingLabels.find((label) => /Continue automatically across the queue/.test(label.textContent)).querySelector('input[type="checkbox"]');
   automatic.checked = false;
   automatic.dispatchEvent(new env.window.Event("change", { bubbles: true }));
   const retries = settingLabels.find((label) => /Maximum retries/.test(label.textContent)).querySelector('input[type="number"]');
@@ -538,9 +728,7 @@ test("diagnostics download is permission-free and omits prompt text, labels, and
   const secretPrompt = "TOP_SECRET_PROMPT_TEXT that must never appear in diagnostics.";
   const chain = Core.makeChain("TOP_SECRET_CHAIN_NAME", Core.parsePromptPack(secretPrompt, "single").prompts, secretPrompt);
   chain.prompts[0].label = "TOP_SECRET_PROMPT_LABEL";
-  const state = Core.migrateState({ chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id });
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "run";
+  const state = appState([chain], { settings: { panelOpen: true, activeTab: "run" } });
   let downloads = 0;
   let createdBlob = null;
   const env = await createEnvironment("", state, {
@@ -573,37 +761,43 @@ test("diagnostics download is permission-free and omits prompt text, labels, and
   assert.ok(env.window.__aisq.state().history.some((entry) => entry.kind === "diagnostics"));
 });
 
-test("each paste creates one FIFO chain without resetting an active runner", async (t) => {
-  const state = Core.defaultState();
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "build";
-  state.runner.enabled = true;
-  state.runner.phase = Core.PHASES.RUNNING;
-  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>', state);
+test("each paste creates one FIFO chain after the active runner chain", async (t) => {
+  const active = Core.makeChain("Active", Core.parsePromptPack("Keep the active prompt intact.", "single").prompts, "active");
+  active.prompts[0].status = "pending";
+  const state = appState([active], {
+    settings: { panelOpen: true, activeTab: "build" },
+    runner: { enabled: true, phase: Core.PHASES.AWAITING, activeChainId: active.id, pendingPromptId: active.prompts[0].id, submittedAt: Date.now() }
+  });
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="false">Build</button>', state);
   t.after(() => env.close());
   const paste = (text) => {
     const draft = env.shadow().querySelector(".aisq-draft");
     assert.ok(draft, "Build intake remains mounted for uninterrupted pastes");
     draft.value = text;
     draft.dispatchEvent(new env.window.Event("input", { bubbles: true, cancelable: true }));
-    const addButton = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent === "Add chain");
-    assert.ok(addButton, "Add chain button exists");
+    const splitter = env.shadow().querySelector(".aisq-select");
+    splitter.value = "delimiter";
+    splitter.dispatchEvent(new env.window.Event("change", { bubbles: true }));
+    const addButton = buttonNamed(env.shadow(), "Add to Queue");
+    assert.ok(addButton, "Add to Queue button exists");
     addButton.click();
   };
   paste("A1 substantial prompt that should remain in chain A.\n\n---\n\nA2 substantial prompt that should remain in chain A.");
   await wait(80);
+  buttonNamed(env.shadow(), "build").click();
+  await wait(40);
   paste("B1 substantial prompt that should remain in chain B.");
   await wait(80);
   const result = env.window.__aisq.state();
-  assert.equal(result.chains.length, 2);
+  assert.equal(result.chains.length, 3);
   assert.deepEqual(result.stackOrder, result.chains.map((chain) => chain.id));
-  assert.equal(result.chains[0].prompts.length, 2);
-  assert.equal(result.chains[1].prompts.length, 1);
+  assert.equal(result.chains[1].prompts.length, 2);
+  assert.equal(result.chains[2].prompts.length, 1);
   assert.equal(result.runner.enabled, true);
-  assert.equal(result.runner.phase, Core.PHASES.RUNNING);
-  assert.equal(result.settings.activeTab, "build");
-  assert.ok(env.shadow().querySelector(".aisq-draft"));
-  assert.match(env.shadow().textContent, /Stack now: 2 chain\(s\) · 3 prompt\(s\)/);
+  assert.equal(result.runner.phase, Core.PHASES.AWAITING, "imports leave the active pending runner in its existing awaiting state");
+  assert.equal(result.chains[0].id, active.id);
+  assert.equal(result.settings.activeTab, "stack");
+  assert.match(env.shadow().textContent, /Active/);
 });
 
 test("two content-script instances honor the service-worker runner lease", async (t) => {
@@ -632,20 +826,19 @@ test("two content-script instances honor the service-worker runner lease", async
   };
   const queuedState = () => {
     const chain = Core.makeChain("Lease fixture", Core.parsePromptPack("Build one lease-safe production fixture.", "single").prompts, "fixture");
-    const state = Core.migrateState({ chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id });
-    state.settings.panelOpen = true;
-    state.settings.activeTab = "run";
-    return state;
+    return appState([chain], { settings: { panelOpen: true, activeTab: "run" } });
   };
-  const body = '<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>';
+  const body = '<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="false">Build</button>';
   const first = await createEnvironment(body, queuedState(), { sendMessage: sender(11) });
   const second = await createEnvironment(body, queuedState(), { sendMessage: sender(22) });
   t.after(() => { first.close(); second.close(); });
 
   const clickNamed = (env, label) => Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes(label))?.click();
   clickNamed(first, "Start");
+  await first.window.__aisq.tick();
   await wait(120);
   clickNamed(second, "Start");
+  await second.window.__aisq.tick();
   await wait(120);
   assert.equal(first.window.__aisq.state().runner.enabled, true);
   assert.equal(first.window.__aisq.state().runner.ownerTabId, "11");
@@ -653,8 +846,10 @@ test("two content-script instances honor the service-worker runner lease", async
   assert.match(second.window.__aisq.state().runner.lastError, /another AI Studio tab/i);
 
   clickNamed(first, "Pause");
+  await first.window.__aisq.tick();
   await wait(80);
   clickNamed(second, "Start");
+  await second.window.__aisq.tick();
   await wait(120);
   assert.equal(second.window.__aisq.state().runner.enabled, false);
   assert.equal(second.window.__aisq.state().runner.ownerTabId, "11");
@@ -687,9 +882,7 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
     queueMicrotask(() => callback?.(response));
   };
   const chain = Core.makeChain("Bound app", Core.parsePromptPack("Build one app-bound recovery fixture.", "single").prompts, "fixture");
-  const state = Core.migrateState({ chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id });
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "run";
+  const state = appState([chain], { settings: { panelOpen: true, activeTab: "run" } });
   const backend = { data: { aisqStateV2: structuredClone(state) }, listeners: new Set() };
   const body = '<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="false">Build</button>';
   const first = await createEnvironment(body, null, { storageBackend: backend, sendMessage: sender(11) });
@@ -699,9 +892,11 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   const clickNamed = (env, label) => Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes(label))?.click();
 
   clickNamed(first, "Start");
+  await first.window.__aisq.tick();
   await wait(850);
-  assert.equal(first.window.__aisq.state().runner.boundPageKey, "/apps/test-app");
+  assert.equal(first.window.__aisq.state().runner.boundPageKey, "app:test-app");
   clickNamed(first, "Pause");
+  await first.window.__aisq.tick();
   await wait(150);
   assert.equal(first.window.__aisq.state().runner.enabled, false);
   assert.equal(first.window.__aisq.state().runner.ownerTabId, "11");
@@ -710,6 +905,7 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   assert.ok(Array.from(second.shadow().querySelectorAll(".aisq-button")).some((node) => node.textContent.includes("Recover")));
 
   clickNamed(second, "Recover");
+  await second.window.__aisq.tick();
   await wait(120);
   assert.match(second.window.__aisq.state().runner.lastError, /original runner tab is still active/i);
   assert.equal(second.window.__aisq.state().runner.ownerTabId, "11");
@@ -719,6 +915,7 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
   await wait(80);
   assert.equal(releases, 1);
   clickNamed(second, "Recover");
+  await second.window.__aisq.tick();
   await wait(180);
   assert.equal(second.window.__aisq.state().runner.enabled, true);
   assert.equal(second.window.__aisq.state().runner.ownerTabId, "22");
@@ -727,13 +924,14 @@ test("a paused pending run retains ownership and can be explicitly recovered onl
 
 test("pending recovery refuses a different AI Studio app before acquiring a lease", async (t) => {
   const chain = Core.makeChain("Original app", [Core.normalizePrompt({ id: "bound-prompt", text: "A bound pending prompt.", status: "pending" })], "fixture");
-  const state = Core.migrateState({ chains: [chain], stackOrder: [chain.id], selectedChainId: chain.id });
-  state.settings.panelOpen = true;
-  state.settings.activeTab = "run";
-  state.runner = { ...state.runner, enabled: false, phase: Core.PHASES.PAUSED, activeChainId: chain.id, pendingPromptId: "bound-prompt", ownerTabId: "11", boundPageKey: "/apps/original-app" };
+  const state = appState([chain], {
+    pageKey: "app:different-app",
+    settings: { panelOpen: true, activeTab: "run" },
+    runner: { enabled: false, phase: Core.PHASES.PAUSED, activeChainId: chain.id, pendingPromptId: "bound-prompt", ownerTabId: "11", boundPageKey: "app:original-app" }
+  });
   let acquireCalls = 0;
   const env = await createEnvironment("", state, {
-    url: "https://aistudio.google.com/apps/different-app",
+    url: "https://aistudio.google.com/app/apps/different-app",
     sendMessage(message, callback) {
       if (message.type === "AISQ_GET_TAB_ID") queueMicrotask(() => callback?.({ tabId: 22 }));
       else if (message.type === "AISQ_LEASE_ACQUIRE") { acquireCalls += 1; queueMicrotask(() => callback?.({ ok: true, tabId: 22, token: "should-not-be-used" })); }
@@ -743,14 +941,15 @@ test("pending recovery refuses a different AI Studio app before acquiring a leas
   const recover = Array.from(env.shadow().querySelectorAll(".aisq-button")).find((node) => node.textContent.includes("Recover"));
   assert.ok(recover);
   recover.click();
+  await env.window.__aisq.tick();
   await wait(100);
   assert.equal(acquireCalls, 0);
-  assert.match(env.window.__aisq.state().runner.lastError, /belongs to \/apps\/original-app/i);
+  assert.match(env.window.__aisq.state().runner.lastError, /belongs to app:original-app/i);
   assert.equal(env.window.__aisq.state().runner.ownerTabId, "11");
 });
 
 test("sequential queue edits synchronize across open AI Studio tabs", async (t) => {
-  const initial = Core.defaultState();
+  const initial = appState();
   const backend = { data: { aisqStateV2: structuredClone(initial) }, listeners: new Set() };
   const first = await createEnvironment("", null, { storageBackend: backend });
   const second = await createEnvironment("", null, { storageBackend: backend });
@@ -774,7 +973,7 @@ test("sequential queue edits synchronize across open AI Studio tabs", async (t) 
 });
 
 test("a stale tab cannot overwrite a newer queue revision", async (t) => {
-  const initial = Core.defaultState();
+  const initial = appState();
   const backend = { data: { aisqStateV2: structuredClone(initial) }, listeners: new Set() };
   const first = await createEnvironment("", null, { storageBackend: backend });
   const second = await createEnvironment("", null, { storageBackend: backend });
@@ -784,12 +983,12 @@ test("a stale tab cannot overwrite a newer queue revision", async (t) => {
 
   first.window.__aisq.importText("Authoritative chain created in tab one.", "single", { name: "Authoritative" });
   await wait(160);
-  assert.equal(backend.data.aisqStateV2.chains.length, 1);
+  assert.equal(backend.data.aisqStateV2.projects["app:test-app"].chains.length, 1);
 
   second.window.__aisq.importText("A stale conflicting chain from tab two.", "single", { name: "Stale conflict" });
   await wait(180);
-  assert.equal(backend.data.aisqStateV2.chains.length, 1);
-  assert.equal(backend.data.aisqStateV2.chains[0].name, "Authoritative");
+  assert.equal(backend.data.aisqStateV2.projects["app:test-app"].chains.length, 1);
+  assert.equal(backend.data.aisqStateV2.projects["app:test-app"].chains[0].name, "Authoritative");
   assert.equal(second.window.__aisq.state().chains[0].name, "Authoritative");
   assert.match(second.window.__aisq.state().runner.lastError, /newer queue change/i);
 });

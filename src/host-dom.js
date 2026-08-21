@@ -5,9 +5,16 @@
 
   function visible(node) {
     if (!(node instanceof Element)) return false;
-    const style = getComputedStyle(node);
-    const rect = node.getBoundingClientRect();
-    return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) !== 0 && rect.width > 0 && rect.height > 0;
+    try {
+      const style = getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) !== 0 && rect.width > 0 && rect.height > 0;
+    } catch {
+      // Host DOM nodes can cross the isolated-world boundary while AI Studio
+      // swaps editor surfaces. Treat an uninspectable node as hidden instead
+      // of letting a native DOM "Illegal invocation" abort the runner tick.
+      return false;
+    }
   }
 
   let deepQueryCache = new Map();
@@ -41,7 +48,7 @@
       const children = node.children || [];
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
-        if (child.id === ROOT_ID || (ctx.rootHost && child === ctx.rootHost)) continue;
+        if (child.id === ctx.ROOT_ID || (ctx.rootHost && child === ctx.rootHost)) continue;
         if (child.shadowRoot) crawl(child.shadowRoot);
         crawl(child);
       }
@@ -111,7 +118,7 @@
   
 
   function stashText() {
-    const ta = scanHostCached().textarea;
+    const ta = ctx.scanHostCached().textarea;
     if (!ta) return;
     const original = ta.value ?? "";
     if (!original.trim()) return;
@@ -121,7 +128,7 @@
 
   function restoreText() {
     if (!ctx.textStash) return;
-    const ta = scanHostCached().textarea;
+    const ta = ctx.scanHostCached().textarea;
     if (!ta) return;
     setNativeValue(ta, ctx.textStash.original);
     try {

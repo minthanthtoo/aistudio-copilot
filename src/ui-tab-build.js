@@ -111,7 +111,7 @@
     
     
     if (ctx.state.ui.buildView === "wizard_details") {
-      return renderWizardDetails();
+      return ctx.renderWizardDetails();
     }
 
     const smartInputContainer = el("div", { className: "aisq-section" }, [
@@ -545,5 +545,5 @@
   }
 
 
-  Object.assign(ctx, { importText, renderBuild });
+  Object.assign(ctx, { importText, renderBuild, saveUserTemplate });
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -153,19 +153,41 @@
     return state.stackOrder;
   }
 
+  function pageKeyForPath(pathname) {
+    const parts = String(pathname || "/").split(/[?#]/, 1)[0].split("/").filter(Boolean);
+    let kind = null;
+    let identifiers = [];
+    if (parts[0] === "apps") {
+      kind = "app";
+      identifiers = parts.slice(1);
+    } else if (parts[0] === "prompts") {
+      kind = "prompt";
+      identifiers = parts.slice(1);
+    } else if (parts[0] === "app" && parts[1] === "apps") {
+      kind = "app";
+      identifiers = parts.slice(2);
+    } else if (parts[0] === "app" && parts[1] === "prompts") {
+      kind = "prompt";
+      identifiers = parts.slice(2);
+    }
+    if (!kind) return "root";
+    return identifiers.length ? `${kind}:${identifiers.at(-1)}` : `${kind}:home`;
+  }
+
+  function normalizePageKey(value) {
+    const key = String(value || "root");
+    if (/^(?:app|prompt):/.test(key)) return key;
+    return pageKeyForPath(key);
+  }
+
   function getCurrentPageKey() {
-    if (typeof window === 'undefined' || !window.location) return 'root';
-    const p = window.location.pathname;
-    if (p.startsWith("/app/prompts/")) return "prompt:" + p.split("/").pop();
-    if (p === "/app/prompts") return "prompt:home";
-    if (p.startsWith("/app/apps/")) return "app:" + p.split("/").pop();
-    if (p === "/app/apps") return "app:home";
-    return "root";
+    if (typeof window === "undefined" || !window.location) return "root";
+    return pageKeyForPath(window.location.pathname);
   }
 
   function migrateState(raw = {}) {
+    if (!raw || typeof raw !== "object") raw = {};
     const base = defaultState();
-    if (!raw || typeof raw !== "object") return base;
     const sourceChains = Array.isArray(raw.chains)
       ? raw.chains
       : Array.isArray(raw.queues) ? raw.queues : [];
@@ -176,31 +198,75 @@
       : Array.isArray(legacyOrder) ? legacyOrder.slice() : chains.map((chain) => chain.id);
     const selectedChainId = raw.selectedChainId || raw.activeQueueId || chains[0]?.id || null;
     const legacyRunner = { ...base.runner, ...(raw.runner || {}) };
+    if (legacyRunner.boundPageKey) legacyRunner.boundPageKey = normalizePageKey(legacyRunner.boundPageKey);
     legacyRunner.activeChainId = legacyRunner.activeChainId || legacyRunner.runningSeriesId || selectedChainId;
     if (legacyRunner.pendingPromptId && !chains.some((chain) => chain.id === legacyRunner.activeChainId && chain.prompts.some((prompt) => prompt.id === legacyRunner.pendingPromptId))) {
       const owner = chains.find((chain) => chain.prompts.some((prompt) => prompt.id === legacyRunner.pendingPromptId));
       legacyRunner.activeChainId = owner?.id || null;
     }
     
-    const runners = raw.runners || {};
+    const runners = {};
+    const rawRunners = raw.runners && typeof raw.runners === "object" ? raw.runners : {};
+    const runnerEntries = Object.entries(rawRunners).map(([storedKey, storedRunner]) => {
+      const runner = { ...storedRunner };
+      if (runner.boundPageKey) runner.boundPageKey = normalizePageKey(runner.boundPageKey);
+      const normalizedKey = normalizePageKey(storedKey);
+      return { storedKey, normalizedKey, runner };
+    });
+    for (const entry of runnerEntries) {
+      if (entry.normalizedKey === entry.storedKey) runners[entry.normalizedKey] = entry.runner;
+    }
+    for (const entry of runnerEntries) {
+      if (entry.normalizedKey === entry.storedKey) continue;
+      if (runners[entry.normalizedKey] === undefined) runners[entry.normalizedKey] = entry.runner;
+      else if (runners[entry.storedKey] === undefined) runners[entry.storedKey] = entry.runner;
+    }
     
     if (legacyRunner.pendingPromptId && Object.keys(runners).length === 0) {
-       const boundKey = legacyRunner.boundPageKey || "root";
-       const convertedKey = boundKey.startsWith("/app/apps/") ? "app:" + boundKey.split("/").pop() 
-                          : boundKey.startsWith("/app/prompts/") ? "prompt:" + boundKey.split("/").pop() 
-                          : "root";
+       const convertedKey = normalizePageKey(legacyRunner.boundPageKey || "root");
        runners[convertedKey] = legacyRunner;
     }
     
     
-    let projects = raw.projects || {};
-    if (!raw.projects && sourceChains.length > 0) {
-      const currentKey = getCurrentPageKey();
+    const projects = {};
+    const rawProjects = raw.projects && typeof raw.projects === "object" ? raw.projects : {};
+    const projectEntries = Object.entries(rawProjects).map(([storedKey, project]) => ({ storedKey, normalizedKey: normalizePageKey(storedKey), project }));
+    for (const entry of projectEntries) {
+      if (entry.normalizedKey === entry.storedKey) projects[entry.normalizedKey] = entry.project;
+    }
+    for (const entry of projectEntries) {
+      if (entry.normalizedKey === entry.storedKey) continue;
+      if (projects[entry.normalizedKey] === undefined) projects[entry.normalizedKey] = entry.project;
+      else if (projects[entry.storedKey] === undefined) projects[entry.storedKey] = entry.project;
+    }
+    const currentKey = getCurrentPageKey();
+    if (!Object.keys(projects).length && sourceChains.length > 0) {
       projects[currentKey] = {
         chains,
         stackOrder,
         selectedChainId
       };
+    }
+
+    const rootProject = projects.root;
+    const rootProjectHasData = !!(rootProject?.chains?.length || rootProject?.stackOrder?.length || rootProject?.selectedChainId);
+    const rootRunner = runners.root;
+    const rootRunnerHasWork = !!(rootRunner && (rootRunner.pendingPromptId || rootRunner.enabled || ![PHASES.IDLE, PHASES.READY].includes(rootRunner.phase)));
+    const rootBoundKey = normalizePageKey(rootRunner?.boundPageKey || "root");
+    const boundUpgradesToCurrent = (rootBoundKey === "app:home" && currentKey.startsWith("app:") && currentKey !== "app:home") ||
+      (rootBoundKey === "prompt:home" && currentKey.startsWith("prompt:") && currentKey !== "prompt:home");
+    const rootDestinationKey = rootRunnerHasWork && rootBoundKey !== "root" && !boundUpgradesToCurrent ? rootBoundKey : currentKey;
+    const rootPairConflict = rootDestinationKey !== "root" && rootProjectHasData && rootRunnerHasWork &&
+      (projects[rootDestinationKey] !== undefined || runners[rootDestinationKey] !== undefined);
+    if (rootDestinationKey !== "root" && !rootPairConflict) {
+      if (!projects[rootDestinationKey] && rootProjectHasData) {
+        projects[rootDestinationKey] = rootProject;
+        delete projects.root;
+      }
+      if (!runners[rootDestinationKey] && rootRunnerHasWork) {
+        runners[rootDestinationKey] = { ...rootRunner, boundPageKey: rootBoundKey !== "root" ? rootBoundKey : rootDestinationKey };
+        delete runners.root;
+      }
     }
 
     const state = {
@@ -287,5 +353,5 @@
 
   
 
-  Object.assign(Core, { defaultSettings, defaultRunner, defaultProject, defaultState, inferStatus, normalizePrompt, normalizeChain, syncLegacyAliases, ensureStackOrder, getCurrentPageKey, migrateState, makeChain, makeQueue, promptRecords });
+  Object.assign(Core, { defaultSettings, defaultRunner, defaultProject, defaultState, inferStatus, normalizePrompt, normalizeChain, syncLegacyAliases, ensureStackOrder, pageKeyForPath, normalizePageKey, getCurrentPageKey, migrateState, makeChain, makeQueue, promptRecords });
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -18,17 +18,39 @@
     const current = Core.getCurrentPageKey();
     if (lastSeenPageKey !== current) {
       if ((lastSeenPageKey === "app:home" && current.startsWith("app:")) || (lastSeenPageKey === "prompt:home" && current.startsWith("prompt:"))) {
-        // Upgrade detected! Migrate the projects and runners map!
-        mutate(() => {
-          if (ctx.state.runners && ctx.state.runners[lastSeenPageKey]) {
-            ctx.state.runners[current] = ctx.state.runners[lastSeenPageKey];
-            delete ctx.state.runners[lastSeenPageKey];
+        const sourceProject = ctx.state.projects?.[lastSeenPageKey];
+        const sourceRunner = ctx.state.runners?.[lastSeenPageKey];
+        const targetOccupied = !!(ctx.state.projects?.[current] || ctx.state.runners?.[current]);
+
+        // Never overwrite an existing page's project/runner pair. A home-page
+        // runner may still own a lease, so pause it and release that exact key
+        // while retaining its data for explicit recovery.
+        if (targetOccupied) {
+          const ownsSourceLease = !!(ctx.leaseToken && ctx.leaseKey === lastSeenPageKey);
+          if (ownsSourceLease) ctx.releaseRunnerLease();
+          if (sourceRunner && ownsSourceLease) {
+            ctx.mutate(() => {
+              sourceRunner.enabled = false;
+              sourceRunner.phase = PHASES.PAUSED;
+              sourceRunner.ownerTabId = null;
+              sourceRunner.leaseUpdatedAt = null;
+              sourceRunner.lastError = `Runner remained on ${lastSeenPageKey}; ${current} already has saved state`;
+            });
           }
-          if (ctx.state.projects && ctx.state.projects[lastSeenPageKey]) {
-            ctx.state.projects[current] = ctx.state.projects[lastSeenPageKey];
-            delete ctx.state.projects[lastSeenPageKey];
-          }
-        });
+        } else if (sourceProject || sourceRunner) {
+          // Upgrade detected! Move the project and runner together only when
+          // the destination has no pre-existing state.
+          ctx.mutate(() => {
+            if (sourceRunner) {
+              ctx.state.runners[current] = sourceRunner;
+              delete ctx.state.runners[lastSeenPageKey];
+            }
+            if (sourceProject) {
+              ctx.state.projects[current] = sourceProject;
+              delete ctx.state.projects[lastSeenPageKey];
+            }
+          });
+        }
       }
       lastSeenPageKey = current;
     }
@@ -73,8 +95,11 @@
     ctx.state = incoming;
     ctx.persistedRevision = Number(incoming.revision || 0);
     ctx.runnerOwnedByOtherTab = !!(ctx.state.runner.enabled && ctx.state.runner.ownerTabId && ctx.state.runner.ownerTabId !== ctx.tabId);
-    if (ctx.state.runner.ownerTabId !== ctx.tabId) ctx.leaseToken = null;
-    requestRender();
+    if (ctx.state.runner.ownerTabId !== ctx.tabId) {
+      ctx.leaseToken = null;
+      ctx.leaseKey = null;
+    }
+    ctx.requestRender();
     return true;
   }
 
@@ -88,9 +113,9 @@
         else {
           ctx.state = stored;
           ctx.persistedRevision = Number(stored.revision || 0);
-          ctx.state.runner.lastError = "A newer queue change from another tab was kept; repeat your last edit on the synchronized ctx.state";
+          ctx.state.runner.lastError = "A newer queue change from another tab was kept; repeat your last edit on the synchronized state";
           ctx.runnerOwnedByOtherTab = !!(ctx.state.runner.enabled && ctx.state.runner.ownerTabId && ctx.state.runner.ownerTabId !== ctx.tabId);
-          requestRender();
+          ctx.requestRender();
         }
         return false;
       }
@@ -129,7 +154,7 @@
     Core.syncLegacyAliases(ctx.state);
     touchState();
     scheduleSave();
-    if (render) requestRender();
+    if (render) ctx.requestRender();
   }
 
   function command(type, payload = {}, options = {}) {
@@ -140,7 +165,7 @@
       ctx.state.runner.lastError = error;
       touchState();
       scheduleSave();
-      requestRender();
+      ctx.requestRender();
       return { ok: false, error };
     }
     const result = Core.applyCommand(ctx.state, { type, payload });
@@ -150,7 +175,7 @@
         ctx.state.runner.lastError = result.error;
         touchState();
         scheduleSave();
-        requestRender();
+        ctx.requestRender();
       }
       return result;
     }
@@ -158,12 +183,9 @@
     if (!ctx.state.runner.enabled && ctx.state.runner.phase === PHASES.PAUSED) ctx.releaseRunnerLease();
     touchState();
     scheduleSave();
-    requestRender();
+    ctx.requestRender();
     return result;
   }
-
-
-  let toastContainer;
 
   Object.assign(ctx, { selectedChain, runnerChain, runnerPrompt, checkUrlUpgrade, currentPageKey, isAppsListUpgrade, pageMatchesBinding, addHistory, touchState, compareStateVersion, acceptStoredState, enqueueSave, scheduleSave, saveNow, mutate, command });
 })(typeof globalThis !== "undefined" ? globalThis : this);

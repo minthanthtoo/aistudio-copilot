@@ -1,4 +1,4 @@
-# Queue Pilot 0.3 signed-in acceptance pack
+# Queue Pilot 0.3.8 signed-in acceptance pack
 
 Use a disposable Google AI Studio app. These fixtures create visible order markers without external services, account changes, permissions, or paid integrations. Paste each fenced block once into Queue Pilot **Build**; do not paste the fence markers themselves.
 
@@ -15,6 +15,8 @@ Preserve the existing acceptance card and marker order. Append exactly one new f
 ```
 
 ## Paste B — expected detection: 1 prompt
+
+Before pasting B, set **Raw Text Splitter format** to **Single prompt**. Auto-detect intentionally routes one standalone paragraph to the app-description wizard; the explicit strategy verifies the single-prompt queue path.
 
 ```text
 AISQ_B1: Preserve the existing Queue Pilot Acceptance card and marker order. Append exactly one new final list item whose text is AISQ_B1_OK. Do not duplicate or reorder prior AISQ_* markers. Do not add external services or dependencies. Finish by stating AISQ_B1_OK in the assistant response.
@@ -34,9 +36,9 @@ Append exactly one new final list item whose text is AISQ_C2_OK. Do not duplicat
 
 ## Required procedure and evidence
 
-1. Reload the unpacked extension and confirm the Queue Pilot footer is `v0.3.0`.
+1. Reload the unpacked extension and confirm the Queue Pilot footer is `v0.3.8`.
 2. In a pre-existing AI Studio Apps tab, click the toolbar icon and confirm Queue Pilot mounts and opens. Repeat in a fresh Apps tab.
-3. In one disposable app, paste A, B, and C without leaving Build. Confirm the stack meter advances to `3 chain(s) · 5 prompt(s)`.
+3. In one disposable app, paste A, B, and C without leaving Build. Use **Single prompt** for B, then return to **Auto-detect** for C. Confirm the stack meter advances to `3 chain(s) · 5 prompt(s)`.
 4. In Prompts, rename the chains A, B, and C. Move C before B and confirm order A, C, B.
 5. Start the full stack. While A1 is running, inspect B and confirm the Run tab still identifies A/A1 as runner-owned.
 6. After C1 visibly starts, reload the AI Studio page once. Confirm the pending marker does not submit twice and execution safely resumes or pauses with an explicit diagnostic. In a different app tab, confirm Pause/Skip are unavailable and **Recover here** rejects the wrong app.

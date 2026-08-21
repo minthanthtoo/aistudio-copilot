@@ -22,7 +22,7 @@
     ctx.state.runner.nextTarget = null;
     ctx.state.runner.ownerTabId = null;
     ctx.state.runner.leaseUpdatedAt = null;
-    releaseRunnerLease();
+    ctx.releaseRunnerLease();
     ctx.addHistory("error", message, { promptId: prompt?.id || null });
     ctx.touchState();
   }
@@ -36,7 +36,7 @@
     ctx.state.runner.boundPageKey = null;
     ctx.state.runner.ownerTabId = null;
     ctx.state.runner.leaseUpdatedAt = null;
-    releaseRunnerLease();
+    ctx.releaseRunnerLease();
     ctx.addHistory("stack_done", message);
     if (ctx.state.settings.autoDownloadOnDone) void ctx.downloadZip();
   }
@@ -130,9 +130,11 @@
     if (!persisted || ctx.state.runner.pendingPromptId !== intendedPromptId || !ctx.state.runner.enabled) return;
     
     if (host.submit) {
-      const isStop = Array.from(host.submit.querySelectorAll('mat-icon, .material-icons, .material-symbols-outlined')).some(el => /^(stop|stop_circle|cancel|pause|pause_circle)$/i.test(ctx.state.ui?.draft ? "" : (el.textContent || "")));
+      const isStop = Array.from(host.submit.querySelectorAll('mat-icon, .material-icons, .material-symbols-outlined')).some(el => /^(stop|stop_circle|cancel|pause|pause_circle)$/i.test(el.textContent || ""));
       if (!isStop && !/^(stop|cancel|pause)/i.test(host.submit.textContent?.trim() || "")) {
-        host.submit.click();
+        if (!ctx.robustClick(host.submit)) {
+          return markPromptError("AI Studio submit control could not be activated");
+        }
       }
     } else if (host.textarea) {
       const enterKey = (type) => new KeyboardEvent(type, {

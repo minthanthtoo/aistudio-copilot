@@ -128,7 +128,7 @@ function renderWizardDetails() {
     const submit = () => {
       if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
       const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
+      const commandResult = ctx.importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
       if (commandResult.ok) {
         ctx.mutate(() => { ctx.state.ui.buildView = "input"; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; });
         ctx.requestRender(true);
@@ -138,7 +138,7 @@ function renderWizardDetails() {
     const submitAndStart = () => {
       if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
       const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-      const commandResult = importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
+      const commandResult = ctx.importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
       if (commandResult.ok) {
         ctx.mutate(() => { 
           ctx.state.ui.buildView = "input"; 
@@ -200,7 +200,7 @@ function renderWizardDetails() {
           } else {
             const name = saveNameInput.value.trim();
             if (name) {
-              await saveUserTemplate(name, ctx.state.ui.specAnswers);
+              await ctx.saveUserTemplate(name, ctx.state.ui.specAnswers);
               saveNameInput.value = "";
               saveNameInput.style.display = "none";
               saveMode = false;

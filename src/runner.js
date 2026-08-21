@@ -28,11 +28,21 @@ try {
         ctx.state.runner.lastHostState = host.blocked ? `Blocked: ${host.blockedReason}` : `${host.mode}: ${host.state}`;
         ctx.requestRender();
       }
-      if (clickOptInControls()) ctx.requestRender();
-      renderCountdowns();
+      if (ctx.clickOptInControls()) ctx.requestRender();
+      ctx.renderCountdowns();
       if (ctx.state.runner.pendingPromptId && ctx.leaseToken && ctx.state.runner.ownerTabId === ctx.tabId) {
         const currentKey = ctx.currentPageKey();
         if (ctx.isAppsListUpgrade(ctx.state.runner.boundPageKey, currentKey)) {
+          if (!await ctx.moveRunnerLease(currentKey)) {
+            ctx.state.runner.enabled = false;
+            Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
+            ctx.state.runner.lastError = `Could not transfer the runner lease to ${currentKey}; another tab may own that app`;
+            ctx.releaseRunnerLease();
+            ctx.touchState();
+            ctx.scheduleSave();
+            ctx.requestRender();
+            return;
+          }
           ctx.state.runner.boundPageKey = currentKey;
           ctx.touchState();
           ctx.scheduleSave();
@@ -42,7 +52,7 @@ try {
           ctx.state.runner.ownerTabId = null;
           ctx.state.runner.leaseUpdatedAt = null;
           ctx.state.runner.lastError = `Pending work is bound to ${ctx.state.runner.boundPageKey}; open that AI Studio app before resuming`;
-          releaseRunnerLease();
+          ctx.releaseRunnerLease();
           ctx.touchState();
           ctx.scheduleSave();
           ctx.requestRender();
@@ -50,7 +60,7 @@ try {
         }
       }
       if (!ctx.state.runner.enabled) {
-        if (ctx.state.runner.pendingPromptId && ctx.leaseToken) await heartbeatRunnerLease();
+        if (ctx.state.runner.pendingPromptId && ctx.leaseToken) await ctx.heartbeatRunnerLease();
         return;
       }
       if (!ctx.leaseToken) {
@@ -60,13 +70,13 @@ try {
           ctx.requestRender();
           return;
         }
-        if (ctx.state.runner.ownerTabId && ctx.state.runner.ownerTabId !== ctx.tabId && !leaseExpired()) {
+        if (ctx.state.runner.ownerTabId && ctx.state.runner.ownerTabId !== ctx.tabId && !ctx.leaseExpired()) {
           ctx.runnerOwnedByOtherTab = true;
           ctx.state.runner.lastHostState = "Runner is owned by another AI Studio tab";
           ctx.requestRender();
           return;
         }
-        if (!await acquireRunnerLease()) {
+        if (!await ctx.acquireRunnerLease()) {
           ctx.state.runner.lastHostState = "Runner is owned by another AI Studio tab";
           ctx.requestRender();
           return;
@@ -74,21 +84,21 @@ try {
         ctx.touchState();
         ctx.scheduleSave();
       }
-      if (!await heartbeatRunnerLease()) return;
-      if (clickOptInControls()) {
+      if (!await ctx.heartbeatRunnerLease()) return;
+      if (ctx.clickOptInControls()) {
         ctx.touchState();
         ctx.scheduleSave();
       }
 
-      if (ctx.state.runner.phase === PHASES.READY) beginSubmission(host);
-      else if (ctx.state.runner.phase === PHASES.SUBMITTING) await finishSubmission(host);
+      if (ctx.state.runner.phase === PHASES.READY) ctx.beginSubmission(host);
+      else if (ctx.state.runner.phase === PHASES.SUBMITTING) await ctx.finishSubmission(host);
       else {
         const decision = Core.decideRunnerTransition(ctx.state.runner, host, ctx.state.settings, Date.now());
-        if (decision.action !== "none") await applyTransition(decision, host);
+        if (decision.action !== "none") await ctx.applyTransition(decision, host);
       }
       ctx.requestRender();
     } catch (error) {
-      markPromptError(`Copilot error: ${error.message}`);
+      ctx.markPromptError(`Copilot error: ${error.message}`);
       ctx.scheduleSave();
     } finally {
       ctx.tickBusy = false;
@@ -106,7 +116,7 @@ try {
       ctx.mutate(() => { ctx.state.runner.lastError = "Add at least one queued prompt to the selected run scope first"; });
       return;
     }
-    if (!await acquireRunnerLease()) {
+    if (!await ctx.acquireRunnerLease()) {
       ctx.mutate(() => { ctx.state.runner.lastError = "Another AI Studio tab owns the runner"; });
       return;
     }
@@ -130,7 +140,7 @@ try {
       return;
     }
     const retainPendingLease = !!ctx.state.runner.pendingPromptId;
-    if (!retainPendingLease) releaseRunnerLease();
+    if (!retainPendingLease) ctx.releaseRunnerLease();
     ctx.mutate(() => {
       ctx.state.runner.enabled = false;
       Core.commitTransition(ctx.state, Core.EVENTS.TRANSITION, { phase: PHASES.PAUSED });
@@ -144,6 +154,10 @@ try {
     if (ctx.state.runner.pendingPromptId) {
       const currentKey = ctx.currentPageKey();
       if (ctx.isAppsListUpgrade(ctx.state.runner.boundPageKey, currentKey)) {
+        if (ctx.leaseToken && !await ctx.moveRunnerLease(currentKey)) {
+          ctx.mutate(() => { ctx.state.runner.lastError = `Could not transfer the runner lease to ${currentKey}; another tab may own that app`; });
+          return;
+        }
         ctx.mutate(() => { ctx.state.runner.boundPageKey = currentKey; });
       }
     }
@@ -151,7 +165,7 @@ try {
       ctx.mutate(() => { ctx.state.runner.lastError = `Pending work is bound to ${ctx.state.runner.boundPageKey}; open that AI Studio app before resuming`; });
       return;
     }
-    if (!await acquireRunnerLease()) {
+    if (!await ctx.acquireRunnerLease()) {
       ctx.mutate(() => { ctx.state.runner.lastError = "Another AI Studio tab owns the runner"; });
       return;
     }
@@ -183,7 +197,7 @@ try {
       ctx.mutate(() => { ctx.state.runner.lastError = `This pending prompt belongs to ${ctx.state.runner.boundPageKey}, not ${currentKey}`; });
       return;
     }
-    if (!await acquireRunnerLease()) {
+    if (!await ctx.acquireRunnerLease()) {
       ctx.mutate(() => { ctx.state.runner.lastError = "The original runner tab is still active; recover from that tab or wait for its lease to expire"; });
       return;
     }
