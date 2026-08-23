@@ -7,7 +7,6 @@
     const node = document.createElement(tag);
     if (options.className) node.className = options.className;
     if (options.text !== undefined) node.textContent = String(options.text);
-    if (options.html !== undefined) node.innerHTML = String(options.html);
     if (options.id) node.id = options.id;
     if (options.title) node.title = options.title;
     if (options.type) node.type = options.type;

@@ -154,6 +154,18 @@ function pendingState({ baselineTurnCount = 0, retryCount = 0, settings = {} } =
   });
 }
 
+test("el() refuses the html option and never assigns innerHTML", () => {
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", { runScripts: "outside-only", pretendToBeVisual: true });
+  const { window } = dom;
+  window.eval("globalThis.AISQContext = Object.create(null);");
+  window.eval(contentSources.get("src/ui-utils.js"));
+  const sneaky = '<img src=x onerror="window.__aisq_pwned=1">';
+  const node = window.AISQUIUtils.el("div", { html: sneaky });
+  assert.equal(node.childElementCount, 0);
+  assert.equal(node.innerHTML, "");
+  dom.window.close();
+});
+
 test("content script mounts an isolated shadow UI and toggles without TrustedHTML", async (t) => {
   const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
   t.after(() => env.close());
