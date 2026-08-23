@@ -1,5 +1,7 @@
 "use strict";
 
+importScripts("src/fetch-policy.js");
+
 const CONTENT_FILES = Object.freeze((chrome.runtime?.getManifest?.().content_scripts || [])
   .find((entry) => entry.matches?.includes("https://aistudio.google.com/*"))?.js?.slice() || []);
 const LEASES_KEY = "aisqRunnerLeases";
@@ -129,14 +131,65 @@ if (chrome.runtime?.onMessage?.addListener) {
       return false;
     }
     if (message?.type === "AISQ_FETCH_URL") {
-      fetch(message.url, { headers: { "Accept": "text/html" } })
-        .then(res => {
+      const policy = globalThis.AISQFetchPolicy;
+      const verdict = policy.validateFetchUrl(message.url);
+      if (!verdict.ok) {
+        sendResponse({ ok: false, error: "Rejected by fetch policy: " + verdict.reason });
+        return false;
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      (async () => {
+        try {
+          const res = await fetch(verdict.url, {
+            headers: { Accept: "text/html" },
+            signal: controller.signal,
+            redirect: "follow"
+          });
           if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
-          return res.text();
-        })
-        .then(html => sendResponse({ ok: true, html }))
-        .catch(err => sendResponse({ ok: false, error: err.message }));
-      return true; // async response
+
+          // A2-1: re-validate WHERE we landed — redirects may leave the allowlist.
+          const finalVerdict = policy.validateFetchUrl(res.url);
+          if (!finalVerdict.ok) {
+            throw new Error("Redirected outside allowed host: " + finalVerdict.reason);
+          }
+
+          // A2-2: pre-gate on declared size, then stream with a running cap so a
+          // huge body is aborted mid-flight instead of buffered then rejected.
+          const declared = Number(res.headers.get("content-length") || 0);
+          if (declared > verdict.maxBytes) throw new Error("Response too large");
+
+          let html;
+          if (res.body && res.body.getReader) {
+            const reader = res.body.getReader();
+            const chunks = [];
+            let received = 0;
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              received += value.byteLength;
+              if (received > verdict.maxBytes) {
+                try { await reader.cancel(); } catch (_) {}
+                throw new Error("Response too large");
+              }
+              chunks.push(value);
+            }
+            const merged = new Uint8Array(received);
+            let offset = 0;
+            for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
+            html = new TextDecoder("utf-8", { fatal: false }).decode(merged);
+          } else {
+            html = await res.text();               // legacy path; still capped after
+            if (html.length > verdict.maxBytes) throw new Error("Response too large");
+          }
+          sendResponse({ ok: true, html });
+        } catch (err) {
+          sendResponse({ ok: false, error: err.message });
+        } finally {
+          clearTimeout(timer);
+        }
+      })();
+      return true; // async sendResponse
     }
     if (!["AISQ_LEASE_ACQUIRE", "AISQ_LEASE_HEARTBEAT", "AISQ_LEASE_RELEASE", "AISQ_LEASE_MOVE"].includes(message?.type)) return false;
     serializedLeaseOperation(() => handleLeaseMessage(message, sender)).then(sendResponse, (error) => sendResponse({ ok: false, error: error?.message || String(error) }));

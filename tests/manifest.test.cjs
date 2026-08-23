@@ -10,6 +10,17 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 const contentFiles = manifest.content_scripts.find((entry) => entry.matches.includes("https://aistudio.google.com/*")).js;
 
+// Emulates the service-worker global: importScripts evaluates each file into the
+// SAME sandbox global, exactly as a real MV3 service worker would.
+function runServiceWorkerSource(source, context) {
+  context.importScripts = (...files) => {
+    for (const file of files) {
+      vm.runInNewContext(fs.readFileSync(path.join(root, file), "utf8"), context, { filename: file });
+    }
+  };
+  vm.runInNewContext(source, context, { filename: "background.js" });
+}
+
 test("manifest is a narrow MV3 extension with core loaded before the content runner", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const packageLock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
@@ -74,7 +85,7 @@ test("toolbar action and command message only an active AI Studio Apps tab", asy
       commands: { onCommand: { addListener(listener) { commandListener = listener; } } }
     }
   };
-  vm.runInNewContext(source, context, { filename: "background.js" });
+  runServiceWorkerSource(source, context);
   assert.equal(typeof actionListener, "function");
   assert.equal(typeof commandListener, "function");
 
@@ -118,7 +129,7 @@ test("onInstalled reinjects the manifest-derived module graph in manifest order"
       commands: { onCommand: { addListener() {} } }
     }
   };
-  vm.runInNewContext(source, context, { filename: "background.js" });
+  runServiceWorkerSource(source, context);
   assert.equal(typeof installedListener, "function");
   installedListener();
   await new Promise((resolve) => setImmediate(resolve));
@@ -156,7 +167,7 @@ test("service worker fences keyed runner leases, moves ownership, and cleans eve
       commands: { onCommand: { addListener() {} } }
     }
   };
-  vm.runInNewContext(source, context, { filename: "background.js" });
+  runServiceWorkerSource(source, context);
 
   const send = (message, tabId) => new Promise((resolve) => {
     const asynchronous = messageListener(message, { tab: { id: tabId } }, resolve);
