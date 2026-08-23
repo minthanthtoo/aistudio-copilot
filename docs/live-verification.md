@@ -12,6 +12,16 @@ Current-source verification completed in the production-order harness:
 
 The signed-in Chrome gate remains intentionally open until the unpacked 0.4.0 extension is freshly reloaded and the acceptance pack is executed. Do not treat the historical 0.3.x observations below as evidence for the current Draft Plan release.
 
+## 0.4.1 hardening delta (2026-08-23)
+
+The 0.4.0 audit above completed, then the release branch hardened it and the version was bumped 0.4.0 → 0.4.1 to mark the security delta. The signed-in gate now targets 0.4.1.
+
+- `npm run verify`: 132/132 tests passed (up from 117 at the 0.4.0 audit; +15 from the fetch-policy allowlist suite, the `el()` no-innerHTML regression test, and the packaging importScripts-dependency test).
+- Security: `AISQ_FETCH_URL` now validates against an https allowlist (chatgpt.com and its subdomains), re-validates after redirects, and enforces a streamed response-size cap; the `el({html})` innerHTML sink was removed and the bubble SVG is built via the DOM API.
+- Package: `dist/ai-studio-queue-pilot-0.4.1.zip` regenerated from hardened source with the SHA-256 sidecar; the packager now derives service-worker `importScripts` dependencies transitively, and CI fails on checksum drift.
+- Manifest, package, and lockfile versions: `0.4.1`.
+- Signed-in Chrome gate: intentionally still open; the unpacked 0.4.1 build must pass the acceptance pack before publish.
+
 ## Live evidence entry
 
 - Date/time:

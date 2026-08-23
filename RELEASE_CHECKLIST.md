@@ -1,8 +1,8 @@
 # Release checklist
 
-## v0.4.0 Draft Plan release
+## v0.4.1 Draft Plan release
 
-- [x] Manifest, package, and lockfile versions match `0.4.0`.
+- [x] Manifest, package, and lockfile versions match `0.4.1`.
 - [x] State schema v2 migrates to v3 without dropping legacy wizard answers.
 - [x] Description, built-in template, JSON, and ChatGPT extraction paths create Draft Plans with provenance.
 - [x] Draft Plan questions are deterministic, dependency-aware, and capped at three.
@@ -21,7 +21,7 @@
 
 ## Signed-in Chrome gates
 
-- [ ] Reload the unpacked project and confirm the footer shows `v0.4.0`.
+- [ ] Reload the unpacked project and confirm the footer shows `v0.4.1`.
 - [ ] Toolbar click mounts/toggles Queue Pilot in a tab open before reload and a fresh AI Studio Apps tab.
 - [ ] Describe an app and confirm the Draft Plan appears immediately with no more than three questions.
 - [ ] Change or skip a question, reload, and confirm the Draft Plan and provenance rehydrate.
