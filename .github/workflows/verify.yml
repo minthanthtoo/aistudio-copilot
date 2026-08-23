@@ -1,0 +1,22 @@
+name: verify
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - name: Package determinism gate (A4)
+        run: |
+          npm run package:extension
+          ZIP=$(ls dist/*.zip | sort | tail -1)
+          COMPUTED=$(sha256sum "$ZIP" | awk '{print $1}')
+          DECLARED=$(awk '{print $1}' "${ZIP}.sha256")
+          [ "$COMPUTED" = "$DECLARED" ] || { echo "::error::package checksum drift"; exit 1; }
+          [ "$(find src -name '*.js' -newer "$ZIP" | wc -l)" = "0" ] || { echo "::error::source newer than package"; exit 1; }
+          unzip -l "$ZIP" | grep -q 'src/fetch-policy.js' || { echo "::error::fetch-policy missing from archive"; exit 1; }
