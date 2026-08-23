@@ -175,11 +175,38 @@
       .aisq-plan-question { display:flex; flex-direction:column; gap:5px; margin-top:8px; }
       .aisq-plan-question-actions { display:flex; flex-wrap:wrap; gap:6px; }
       .aisq-plan-question-actions .aisq-button { font-size:11px; padding:5px 8px; }
+      .aisq-plan-required-note { flex:1 1 100%; color:#ffd2a8; line-height:1.35; }
       .aisq-plan-question-count { color:#aaa6b7; }
       .aisq-plan-actions { margin-top:2px; }
+      .aisq-plan-map { padding:10px 12px; border:1px solid #7357ff55; border-radius:10px; background:#17161c; }
+      .aisq-plan-map-heading { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+      .aisq-plan-map-heading small,.aisq-plan-map-key { color:#aaa6b7; font-size:10px; }
+      .aisq-plan-map-readiness { margin:5px 0 8px; color:#d7d3e2; font-size:11px; }
+      .aisq-plan-map progress { width:100%; height:7px; margin:0 0 8px; accent-color:#8067ff; }
+      .aisq-plan-map-tree,.aisq-plan-map-children { list-style:none; margin:0; padding:0; }
+      .aisq-plan-map-children { margin:3px 0 3px 15px; padding-left:9px; border-left:1px solid #ffffff22; }
+      .aisq-plan-map-node { margin:3px 0; }
+      .aisq-plan-map-node .aisq-button { width:100%; min-height:27px; padding:4px 7px; text-align:left; font-size:11px; white-space:normal; }
+      .aisq-plan-map-node.is-confirmed .aisq-button { color:#9ee7bc; }
+      .aisq-plan-map-node.is-proposed .aisq-button { color:#d1c4ff; }
+      .aisq-plan-map-node.is-default .aisq-button { color:#cbc7d6; }
+      .aisq-plan-map-node.is-review .aisq-button { color:#ffd48a; border-color:#ffd48a55; }
+      .aisq-plan-map-node.is-required .aisq-button { color:#ffcf70; border-color:#ffb84d88; }
+      .aisq-plan-map-node.is-custom .aisq-button { color:#ffaaa5; border-color:#ff777055; }
+      .aisq-plan-map-node.is-dismissed .aisq-button { color:#858190; text-decoration:line-through; }
+      .aisq-plan-map-node.is-locked .aisq-button { opacity:.58; cursor:not-allowed; }
+      .aisq-plan-map-omitted { margin-top:8px; color:#c9c4d3; font-size:10px; }
+      .aisq-plan-map-omitted summary { cursor:pointer; color:#ffd2a8; }
+      .aisq-plan-map-omitted ul { margin:5px 0 0; padding-left:17px; }
+      .aisq-plan-map-key { display:block; margin-top:7px; line-height:1.35; }
+      .aisq-plan-custom-choice { display:grid; gap:7px; margin-top:3px; padding:8px; border:1px dashed #ffaaa566; border-radius:8px; background:#ff77700d; }
+      .aisq-plan-custom-choice .aisq-button { justify-self:start; }
+      .aisq-plan-summary li { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+      .aisq-plan-summary li .aisq-button { flex:0 0 auto; padding:2px 6px; min-height:22px; font-size:10px; }
       @media (max-width:360px) {
         .aisq-plan-actions .aisq-button { width:100%; }
         .aisq-plan-confidence { display:none; }
+        .aisq-plan-map-heading { align-items:flex-start; flex-direction:column; gap:2px; }
       }
       .aisq-button:disabled { opacity:.4; cursor:not-allowed; }
       .aisq-button.primary { border-color:#8067ff; background:#6d4aff; }

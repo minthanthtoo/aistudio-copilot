@@ -17,7 +17,9 @@ AI Studio Copilot helps you manage, stack, and automate complex prompt chains. W
 - **Compact Media Player Mode**: Collapse the UI into a sleek, floating control bar (`▶️ Start`, `⏸️ Pause`, `⏭️ Skip`) to manage your chains without cluttering your screen.
 - **Multi-Tab Safe**: A lightweight service worker ensures only one tab runs at a time, preventing cross-tab conflicts and synchronizing state across windows.
 - **ZIP Export**: Quickly download your generated app with the click of a button (`Alt+D`).
-- **Choice of build workflow**: Use the low-interruption Draft Plan intake or explicitly choose the original Full Wizard form. Both accept app descriptions, templates, JSON, and ChatGPT extraction, then queue verified prompt chains.
+- **Concept Map planning**: See which decisions are confirmed, suggested, required, locked, or affected; jump to any available decision while a single focus card keeps the interview lightweight.
+- **Custom product paths**: Choose **Other / custom** for app category or project size, preserve the client's exact wording, map it explicitly to a safe build profile, and add bounded tailored follow-up branches.
+- **Choice of build workflow**: Use the low-interruption Draft Plan or the original Full Wizard form. Both edit the same durable decision graph, support descriptions/templates/JSON/ChatGPT extraction, and use one verified exactly-once queueing path.
 
 ## 🚀 Installation
 
@@ -55,7 +57,7 @@ npm install
 npm run verify
 ```
 
-The 98-test suite runs entirely in Node using `jsdom` and the native Node test runner, validating both build workflows, Draft Plan provenance and migration, DOM state-machine transitions, multi-tab coordination, route migration, reinjection, lease fencing, and queue logic.
+The test suite runs entirely in Node using `jsdom` and the native Node test runner, validating both build workflows, Concept Map navigation, custom profile safety, Draft Plan provenance and migration, atomic approval, DOM state-machine transitions, multi-tab coordination, route migration, reinjection, lease fencing, and queue logic.
 
 To package a clean `.zip` for distribution:
 ```bash

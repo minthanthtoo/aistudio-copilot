@@ -5,7 +5,12 @@
   const has = (key) => (answers) => answers?.[key] !== undefined && answers?.[key] !== null && String(answers[key]).trim() !== "";
   const scaleAtLeast = (minimum) => (answers) => {
     const order = { hobby: 0, mvp: 1, startup: 2, production: 3, enterprise: 4 };
-    return (order[answers?.scale] ?? 0) >= minimum;
+    const selected = order[answers?.scale] !== undefined
+      ? answers.scale
+      : order[answers?.deliveryProfile] !== undefined
+        ? answers.deliveryProfile
+        : (answers?.scale || answers?.scaleDetail) ? "production" : "hobby";
+    return (order[selected] ?? 0) >= minimum;
   };
 
   // This catalog is deliberately data-only.  The engine owns ranking, caps,
@@ -41,11 +46,27 @@
       answerKey: "archetype",
       label: "Which kind of product is this closest to?",
       inputType: "select",
-      options: ["web-app", "saas", "dashboard", "e-commerce", "portfolio", "mobile-app", "game", "api-service", "ai-ml-app", "agent-swarm"],
+      options: ["web-app", "saas", "dashboard", "e-commerce", "portfolio", "mobile-app", "game", "3d-cad", "cloud-app", "enterprise", "api-service", "ai-ml-app", "agent-swarm"],
+      allowCustom: true,
+      customDetailKey: "archetypeDetail",
       visibleWhen: always,
       priority: 20,
       reason: "The archetype changes the default screens, workflow, and implementation stages.",
       affects: ["screens", "stages", "preface"]
+    },
+    {
+      id: "archetypeDetail",
+      section: "Scope",
+      answerKey: "archetypeDetail",
+      label: "How is this custom product category different?",
+      inputType: "textarea",
+      options: [],
+      visibleWhen: has("archetypeDetail"),
+      priority: 21,
+      autoAsk: false,
+      parentId: "archetype",
+      reason: "The original category wording is preserved so generic generator defaults do not erase product intent.",
+      affects: ["preface", "customBranches", "features", "stages"]
     },
     {
       id: "scale",
@@ -54,10 +75,26 @@
       label: "How far should the first version go?",
       inputType: "select",
       options: ["hobby", "mvp", "startup", "production", "enterprise"],
+      allowCustom: true,
+      customDetailKey: "scaleDetail",
       visibleWhen: always,
       priority: 25,
       reason: "Scale changes security, testing, deployment, and enterprise stages.",
       affects: ["stages", "architecture", "risk"]
+    },
+    {
+      id: "scaleDetail",
+      section: "Scope",
+      answerKey: "scaleDetail",
+      label: "What does this custom delivery size mean for the project?",
+      inputType: "textarea",
+      options: [],
+      visibleWhen: has("scaleDetail"),
+      priority: 26,
+      autoAsk: false,
+      parentId: "scale",
+      reason: "Custom scope wording is kept alongside a canonical delivery profile so risk and operational work remain explicit.",
+      affects: ["preface", "stages", "architecture", "risk"]
     },
     {
       id: "features",
@@ -70,6 +107,20 @@
       priority: 45,
       reason: "Essential capabilities determine the core workflow and data model.",
       affects: ["stages", "screens", "dataModel"]
+    },
+    {
+      id: "featureChips",
+      section: "Scope",
+      answerKey: "featureChips",
+      label: "Selected feature modules",
+      inputType: "tags",
+      options: [],
+      visibleWhen: has("featureChips"),
+      priority: 46,
+      autoAsk: false,
+      parentId: "features",
+      reason: "Selected modules supplement the written core feature description without duplicating it.",
+      affects: ["features", "stages"]
     },
     {
       id: "screens",
@@ -238,10 +289,177 @@
       priority: 110,
       reason: "Stage overrides change delivery scope and must be reviewed explicitly.",
       affects: ["stages"]
+    },
+    {
+      id: "flowDescription",
+      section: "Delivery",
+      answerKey: "flowDescription",
+      label: "Describe any special navigation or interaction flow",
+      inputType: "textarea",
+      options: [],
+      visibleWhen: has("flowDescription"),
+      priority: 111,
+      autoAsk: false,
+      parentId: "stageOverrides",
+      reason: "A custom flow changes navigation and interaction requirements in the generated foundation.",
+      affects: ["navigation", "stages", "preface"]
     }
   ]);
 
-  const byId = Object.freeze(Object.fromEntries(QUESTIONS.map((question) => [question.id, question])));
-  global.AISQPlanQuestions = { QUESTIONS, byId };
-  if (typeof module !== "undefined" && module.exports) module.exports = { QUESTIONS, byId };
+  // Deterministic custom branches are intentionally bounded and data-only.
+  // They add tailored decision nodes without granting generated text direct
+  // authority over the final specification.
+  const CUSTOM_BRANCH_RULES = Object.freeze([
+    {
+      id: "regulated-domain",
+      version: "1",
+      riskPriority: 30,
+      label: "Regulated or sensitive domain",
+      matches: (answers) => /health|medical|clinical|finance|bank|payment|insurance|education|student|legal|government|regulated/i.test(`${answers?.archetypeDetail || ""} ${answers?.scaleDetail || ""}`),
+      questions: [
+        {
+          id: "custom.regulated.data-handling",
+          section: "Custom path",
+          answerKey: "custom.regulated.dataHandling",
+          label: "What sensitive or regulated data will this product handle?",
+          inputType: "textarea",
+          options: [],
+          priority: 31,
+          parentId: "archetypeDetail",
+          dependsOn: ["archetypeDetail", "scaleDetail"],
+          safeDefault: "Treat personal and domain data as sensitive, minimize collection, and define retention explicitly.",
+          reason: "Data sensitivity changes access control, audit, retention, and compliance requirements.",
+          affects: ["security", "dataModel", "risk", "stages"]
+        },
+        {
+          id: "custom.regulated.human-approval",
+          section: "Custom path",
+          answerKey: "custom.regulated.humanApproval",
+          label: "Where must a person review or approve consequential decisions?",
+          inputType: "textarea",
+          options: [],
+          priority: 32,
+          parentId: "custom.regulated.data-handling",
+          dependsOn: ["archetypeDetail"],
+          safeDefault: "Require human approval before consequential or irreversible actions.",
+          reason: "Human oversight changes workflow states, permissions, evidence, and recovery design.",
+          affects: ["workflow", "security", "audit", "stages"]
+        }
+      ]
+    },
+    {
+      id: "realtime-collaboration",
+      version: "1",
+      riskPriority: 40,
+      label: "Real-time collaboration",
+      matches: (answers) => /real[ -]?time|live collabor|multiplayer|synchronous|shared workspace|presence/i.test(`${answers?.archetypeDetail || ""} ${answers?.scaleDetail || ""}`),
+      questions: [
+        {
+          id: "custom.realtime.consistency",
+          section: "Custom path",
+          answerKey: "custom.realtime.consistency",
+          label: "How should simultaneous edits and temporary disconnections behave?",
+          inputType: "textarea",
+          options: [],
+          priority: 33,
+          parentId: "archetypeDetail",
+          dependsOn: ["archetypeDetail"],
+          safeDefault: "Preserve edits, show presence, resolve conflicts deterministically, and recover after reconnect.",
+          reason: "Concurrency expectations determine synchronization, conflict resolution, and offline behavior.",
+          affects: ["architecture", "dataModel", "workflow", "testing"]
+        }
+      ]
+    },
+    {
+      id: "physical-systems",
+      version: "1",
+      riskPriority: 10,
+      label: "Physical or device-connected system",
+      matches: (answers) => /iot|hardware|sensor|robot|device|drone|embedded|physical/i.test(`${answers?.archetypeDetail || ""} ${answers?.scaleDetail || ""}`),
+      questions: [
+        {
+          id: "custom.physical.failure-safety",
+          section: "Custom path",
+          answerKey: "custom.physical.failureSafety",
+          label: "What must happen when a device, network, or command fails?",
+          inputType: "textarea",
+          options: [],
+          priority: 34,
+          parentId: "archetypeDetail",
+          dependsOn: ["archetypeDetail"],
+          safeDefault: "Fail safely, preserve an audit trail, expose device state, and require confirmation before retrying physical actions.",
+          reason: "Physical side effects require explicit safety, idempotency, and recovery behavior.",
+          affects: ["architecture", "safety", "workflow", "testing"]
+        }
+      ]
+    },
+    {
+      id: "agentic-system",
+      version: "1",
+      riskPriority: 20,
+      label: "Agentic or autonomous system",
+      matches: (answers) => /agent|autonomous|swarm|tool[ -]?using|copilot/i.test(`${answers?.archetypeDetail || ""} ${answers?.scaleDetail || ""}`),
+      questions: [
+        {
+          id: "custom.agent.authority",
+          section: "Custom path",
+          answerKey: "custom.agent.authority",
+          label: "Which actions may the agent take without human approval?",
+          inputType: "textarea",
+          options: [],
+          priority: 35,
+          parentId: "archetypeDetail",
+          dependsOn: ["archetypeDetail"],
+          safeDefault: "Keep external side effects proposal-only until a person approves them.",
+          reason: "Authority boundaries determine consent, evidence, retries, and recovery requirements.",
+          affects: ["authority", "security", "workflow", "audit"]
+        }
+      ]
+    },
+    {
+      id: "generic-custom-intent",
+      version: "1",
+      riskPriority: 100,
+      label: "Custom product intent",
+      matches: (answers) => Boolean(String(answers?.archetypeDetail || answers?.scaleDetail || "").trim()),
+      questions: [
+        {
+          id: "custom.generic.differentiator",
+          section: "Custom path",
+          answerKey: "custom.generic.differentiator",
+          label: "What must this product do differently from the closest build profile?",
+          inputType: "textarea",
+          options: [],
+          priority: 36,
+          parentId: "archetype",
+          dependsOn: ["archetypeDetail", "scaleDetail"],
+          safeDefault: "Preserve the custom intent explicitly and use the closest build profile only for implementation structure.",
+          reason: "A custom label is useful only when its meaningful difference reaches the generated workflow and requirements.",
+          affects: ["preface", "features", "workflow", "stages"]
+        },
+        {
+          id: "custom.generic.success",
+          section: "Custom path",
+          answerKey: "custom.generic.success",
+          label: "Which client outcome proves this custom scope is successful?",
+          inputType: "textarea",
+          options: [],
+          priority: 37,
+          parentId: "custom.generic.differentiator",
+          dependsOn: ["archetypeDetail", "scaleDetail"],
+          safeDefault: "Validate the primary user outcome before expanding the custom scope.",
+          reason: "A concrete success condition keeps a novel category from becoming an unbounded generic build.",
+          affects: ["preface", "acceptanceCriteria", "testing", "stages"]
+        }
+      ]
+    }
+  ]);
+
+  const CUSTOM_QUESTIONS = Object.freeze(CUSTOM_BRANCH_RULES.flatMap((rule) => rule.questions.map((question) => Object.freeze({ ...question, branchId: rule.id, ruleVersion: rule.version }))));
+  const ALL_QUESTIONS = Object.freeze([...QUESTIONS, ...CUSTOM_QUESTIONS]);
+  const byId = Object.freeze(Object.fromEntries(ALL_QUESTIONS.map((question) => [question.id, question])));
+  const byAnswerKey = Object.freeze(Object.fromEntries(ALL_QUESTIONS.map((question) => [question.answerKey, question])));
+  const api = { QUESTIONS, CUSTOM_BRANCH_RULES, CUSTOM_QUESTIONS, ALL_QUESTIONS, byId, byAnswerKey };
+  global.AISQPlanQuestions = api;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

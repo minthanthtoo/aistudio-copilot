@@ -1,5 +1,23 @@
 # Decision log
 
+## 2026-08-21 — Make the decision graph the planning source of truth
+
+- Evidence: a flat review form cannot show progress, locked dependencies, downstream invalidation, or bounded custom branches; keeping the Full Wizard separate also creates conflicting plan state.
+- Decision: persist versioned decisions and provenance, derive a stable `PlanGraph`, and render Draft Plan, Concept Map, Full Wizard, and generator output as projections of that graph.
+- Downstream effect: map progress counts only confirmed/dismissed decisions, Full Wizard uses the atomic plan approval command, and graph layout/defaults remain computed rather than persisted.
+
+## 2026-08-21 — Separate custom intent from generator profiles
+
+- Evidence: arbitrary app-size strings previously became scale index zero and could silently omit security, testing, and deployment work.
+- Decision: preserve `archetypeDetail`/`scaleDetail` as user intent while requiring canonical `archetype`/`scale` decisions. Unknown legacy scale fails closed to Production until reviewed.
+- Downstream effect: custom wording remains client-visible, canonical profiles control deterministic generation, every custom choice gets a bounded local path, and an imported fallback remains explicitly unresolved until the user maps it to a compatible profile. When several custom rules match, safety-critical questions win the three-question interview budget and every capped path remains visible with its conservative assumption included in generated context.
+
+## 2026-08-21 — Keep remote custom-branch generation disabled in v0.4
+
+- Evidence: remote planners add privacy, prompt-injection, latency, recovery, and unbounded-question risks that the extension does not yet have authority or permissions to accept.
+- Decision: ship deterministic registered custom branches plus a validated proposal-only provider contract; `remoteEnabled` remains false.
+- Reversal condition: explicit user consent, privacy disclosure, bounded schema validation, timeout/retry recovery, and evidence that generated nodes cannot directly modify generator stages or execute commands.
+
 ## 2026-08-21 — Make the Draft Plan the intake source of truth
 
 - Evidence: a long mandatory wizard delays the first useful review and mixes inferred values with user intent.
@@ -9,7 +27,7 @@
 ## 2026-08-21 — Keep Draft Plan approval atomic and local
 
 - Evidence: approval can be retried by a user or a reinjected runtime, so a visual success message is not enough to prevent duplicate chains.
-- Decision: require a commit ID in `APPROVE_PLAN_IMPORT`, make the command idempotent, and record approval/queue events in the existing local event log.
+- Decision: require a commit ID and reviewed-draft fingerprint in `APPROVE_PLAN_IMPORT`, revalidate graph eligibility inside the command, regenerate the expected chain and reject mismatched prompt content, make the command idempotent, and record approval/queue events in the existing local event log.
 - Tradeoff: no remote planner or analytics is introduced; consequential uncertainty remains visible and queueing fails closed only when no safe value exists.
 
 ## 2026-08-13 — Keep paste intake on Build

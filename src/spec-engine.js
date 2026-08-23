@@ -3,6 +3,68 @@
   const Data = global.AISQSpecData || (typeof require !== "undefined" ? require("./spec-data.js") : {});
   const { SCALE_INDEX, ARCHETYPES, SCALES, GENRES, FEATURE_SUGGESTIONS, DEFAULT_STACKS, BUILT_IN_TEMPLATES } = Data;
 
+  const text = (value) => String(value ?? "").trim();
+  const isKnownArchetype = (value) => Object.prototype.hasOwnProperty.call(ARCHETYPES || {}, value);
+  const isKnownScale = (value) => (SCALES || []).includes(value);
+
+  // `customContext` is deliberately display-only structured text. Callers may
+  // provide one string or a list of { label, value } entries; it never changes
+  // executable behavior or is interpreted as markup.
+  function normalizeCustomContext(value) {
+    if (typeof value === "string") return text(value) ? [{ label: "Context", value: text(value) }] : [];
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => ({ label: text(item?.label), value: text(item?.value) }))
+      .filter((item) => item.value)
+      .map((item) => ({ label: item.label || "Context", value: item.value }));
+  }
+
+  /**
+   * Projects the user-facing category and scope onto generator-safe values.
+   *
+   * `archetypeDetail` and `scaleDetail` retain wording that is outside the
+   * registered catalog.  The stage generator, however, must never treat an
+   * unknown scale as hobby: an unconfirmed custom size is deliberately run as
+   * production until the caller supplies a canonical `deliveryProfile`.
+   */
+  function normalizeProjectProfile(answers = {}) {
+    const rawArchetype = text(answers.archetype);
+    const rawScale = text(answers.scale);
+    const requestedDeliveryProfile = text(answers.deliveryProfile);
+    const knownArchetype = isKnownArchetype(rawArchetype);
+    const knownScale = isKnownScale(rawScale);
+    const hasDeliveryProfile = isKnownScale(requestedDeliveryProfile);
+    const unknownArchetype = Boolean(rawArchetype) && !knownArchetype;
+    const unknownScale = Boolean(rawScale) && !knownScale;
+    const archetypeDetail = text(answers.archetypeDetail || (unknownArchetype && !["custom", "__custom__"].includes(rawArchetype) ? rawArchetype : ""));
+    const scaleDetail = text(answers.scaleDetail || (unknownScale && !["custom", "__custom__"].includes(rawScale) ? rawScale : ""));
+    // A detail may accompany a selected canonical category/profile. This is
+    // intentional: the canonical decision drives generation while the detail
+    // carries the user's original wording and remains reviewable/provenanced.
+    const isCustomArchetype = unknownArchetype || Boolean(archetypeDetail);
+    const isCustomScale = unknownScale || Boolean(scaleDetail);
+    const requiresScaleConfirmation = unknownScale && !hasDeliveryProfile;
+    const archetype = knownArchetype ? rawArchetype : "web-app";
+    // Fail closed: a non-canonical scope cannot silently omit delivery,
+    // testing, or security work. The plan UI can later replace this with the
+    // user-confirmed deliveryProfile.
+    const scale = knownScale ? rawScale : (hasDeliveryProfile ? requestedDeliveryProfile : (isCustomScale ? "production" : "hobby"));
+    const warnings = [];
+    if (unknownArchetype) warnings.push("Custom app category uses the generic Web App workflow until reviewed.");
+    if (requiresScaleConfirmation) warnings.push("Custom project size is using the conservative Production delivery profile until confirmed.");
+    return {
+      archetype,
+      scale,
+      archetypeDetail,
+      scaleDetail,
+      isCustomArchetype,
+      isCustomScale,
+      requiresArchetypeReview: unknownArchetype,
+      requiresScaleConfirmation,
+      requiresReview: unknownArchetype || requiresScaleConfirmation,
+      warnings
+    };
+  }
+
 
   function formatScreens(screens) {
     if (!screens || !screens.length) return "1. Home (/)";
@@ -286,9 +348,10 @@ REQUIREMENTS:
 `;
   }
   function resolveStages(answers) {
-    const scale = answers.scale || "hobby";
+    const profile = normalizeProjectProfile(answers);
+    const scale = profile.scale;
     const scaleIdx = SCALE_INDEX[scale] || 0;
-    const arch = answers.archetype || "web-app";
+    const arch = profile.archetype;
     
     let pipeline = [];
     
@@ -345,8 +408,9 @@ REQUIREMENTS:
   }
 
   function inferDefaults(answers) {
-    const arch = answers.archetype || "web-app";
-    const scale = answers.scale || "hobby";
+    const profile = normalizeProjectProfile(answers);
+    const arch = profile.archetype;
+    const scale = profile.scale;
     const scaleIdx = SCALE_INDEX[scale] || 0;
     
     let inferred = { ...answers };
@@ -383,7 +447,7 @@ REQUIREMENTS:
   }
 
   function getVisibleSections(answers) {
-    const scale = answers.scale || "hobby";
+    const scale = normalizeProjectProfile(answers).scale;
     const scaleIdx = SCALE_INDEX[scale] || 0;
     return {
       features: true,
@@ -391,12 +455,14 @@ REQUIREMENTS:
       screens: true,
       audience: true,
       techStack: scaleIdx >= 1,
+      industry: scaleIdx >= 2,
       security: scaleIdx >= 3,
       advanced: scaleIdx >= 4
     };
   }
 
   function buildPreface(answers) {
+    const profile = normalizeProjectProfile(answers);
     const genreInfo = GENRES[answers.genre];
     const genreDesc = genreInfo ? genreInfo.description : "Standard clean design.";
     
@@ -413,9 +479,33 @@ REQUIREMENTS:
 
     if (answers.audience) preface += `Primary Audience: ${answers.audience}\n\n`;
 
+    const tailoredContext = normalizeCustomContext(answers.customContext);
+    if (tailoredContext.length) {
+      preface += "Tailored Context:\n";
+      for (const entry of tailoredContext) preface += `- ${entry.label}: ${entry.value}\n`;
+      preface += "\n";
+    }
+
     
     preface += `Technical Constraints:\n`;
-    preface += `- Architecture: ${ARCHETYPES[answers.archetype]?.label || answers.archetype}\n`;
+    preface += `- Architecture: ${ARCHETYPES[profile.archetype]?.label || profile.archetype}\n`;
+    if (profile.isCustomArchetype) {
+      preface += `- Custom Product Category: ${profile.archetypeDetail || "Unspecified custom category"}\n`;
+      if (profile.requiresArchetypeReview) {
+        preface += `- Interpretation: Use the generic Web App workflow and core-feature stage; do not infer a specialized domain pipeline without an explicit decision.\n`;
+      } else {
+        preface += `- Interpretation: Apply the confirmed ${ARCHETYPES[profile.archetype]?.label || profile.archetype} profile while preserving the custom category requirements.\n`;
+      }
+    }
+    preface += `- Delivery Profile: ${profile.scale.charAt(0).toUpperCase() + profile.scale.slice(1)}\n`;
+    if (profile.isCustomScale) {
+      preface += `- Custom Project Size: ${profile.scaleDetail || "Unspecified custom scope"}\n`;
+      if (profile.requiresScaleConfirmation) {
+        preface += `- Interpretation: Production hardening, testing, and deployment are included conservatively until the delivery profile is confirmed.\n`;
+      } else {
+        preface += `- Interpretation: Apply the confirmed ${profile.scale} delivery profile to this custom scope.\n`;
+      }
+    }
     if (answers.frontend && answers.frontend !== "None" && answers.frontend !== "__custom__") preface += `- Frontend: ${answers.frontend}\n`;
     if (answers.backend && answers.backend !== "None" && answers.backend !== "__custom__") preface += `- Backend: ${answers.backend}\n`;
     if (answers.database && answers.database !== "None" && answers.database !== "__custom__") preface += `- Database: ${answers.database}\n`;
@@ -469,7 +559,7 @@ REQUIREMENTS:
     "name", "description", "archetype", "scale", "features", "featureChips",
     "genre", "mobileFirst", "darkMode", "productionQuality", "screens", "audience",
     "frontend", "backend", "database", "hosting", "security", "industry",
-    "authType", "flowDescription", "stageOverrides"
+    "authType", "flowDescription", "stageOverrides", "archetypeDetail", "scaleDetail", "deliveryProfile", "customContext"
   ]);
 
   function deserializeTemplate(jsonStr) {
@@ -494,6 +584,8 @@ REQUIREMENTS:
     GENRE_DESCRIPTIONS: GENRES,
     FEATURE_SUGGESTIONS,
     DEFAULT_STACKS,
+    normalizeProjectProfile,
+    normalizeCustomContext,
     resolveStages,
     assembleSpec,
     buildPreface,

@@ -83,7 +83,7 @@
       runners: {},
       runner: defaultRunner(),
       settings: defaultSettings(),
-      ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, lastPlanCommitId: null, specMode: "paste", specScreen: 0, specAnswers: {}, planMode: "draft", planDraft: null, wizardMode: "plan" },
+      ui: { draft: "", splitStrategy: "auto", detectedStrategy: "empty", lastImportId: null, lastPlanCommitId: null, pendingPlanCommitId: null, specMode: "paste", specScreen: 0, specAnswers: {}, planMode: "draft", planDraft: null, planMapFocusId: null, planCustomEditingKey: null, fullWizardCustomEditingKey: null, wizardMode: "plan" },
       history: [],
       eventLog: [],
       // Compatibility aliases. syncLegacyAliases keeps these references aligned.
@@ -280,7 +280,7 @@
       projects,
       runners,
       settings: { ...base.settings, ...(raw.settings || {}) },
-      ui: { ...base.ui, ...(raw.ui || {}), planDraft },
+      ui: { ...base.ui, ...(raw.ui || {}), planDraft, planCustomEditingKey: null, fullWizardCustomEditingKey: null },
       history: Array.isArray(raw.history) ? raw.history.slice(-300) : [],
       eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-400) : []
     };

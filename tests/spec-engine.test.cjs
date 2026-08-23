@@ -124,6 +124,7 @@ test("getVisibleSections - conditional visibility backward compat", () => {
 
   const prod = AISQSpec.getVisibleSections({ scale: "production" });
   assert.equal(prod.techStack, true);
+  assert.equal(prod.industry, true);
   assert.equal(prod.security, true);
   assert.equal(prod.advanced, false);
 });
@@ -255,6 +256,99 @@ test("Audience is visible, preserved in templates, and affects the generated pre
   assert.match(preface, /Primary Audience: Students/);
   const encoded = AISQSpec.serializeTemplate({ name: "Reader", audience: "Students" });
   assert.deepEqual(AISQSpec.deserializeTemplate(encoded), { name: "Reader", audience: "Students" });
+});
+
+test("custom app categories retain their detail while using a reviewable generic generator profile", () => {
+  const answers = { archetype: "custom", archetypeDetail: "Two-sided local-services marketplace", scale: "mvp" };
+  const profile = AISQSpec.normalizeProjectProfile(answers);
+  assert.deepEqual(profile, {
+    archetype: "web-app",
+    scale: "mvp",
+    archetypeDetail: "Two-sided local-services marketplace",
+    scaleDetail: "",
+    isCustomArchetype: true,
+    isCustomScale: false,
+    requiresArchetypeReview: true,
+    requiresScaleConfirmation: false,
+    requiresReview: true,
+    warnings: ["Custom app category uses the generic Web App workflow until reviewed."]
+  });
+  const result = AISQSpec.assembleSpec(answers);
+  assert.match(result.preface, /Custom Product Category: Two-sided local-services marketplace/);
+  assert.match(result.preface, /generic Web App workflow/);
+  assert.ok(AISQSpec.resolveStages(answers).some((stage) => stage.id === "features"));
+});
+
+test("unknown legacy scale fails closed to a production profile until delivery profile confirmation", () => {
+  const answers = { archetype: "web-app", scale: "mid-market pilot" };
+  const profile = AISQSpec.normalizeProjectProfile(answers);
+  assert.equal(profile.scale, "production");
+  assert.equal(profile.scaleDetail, "mid-market pilot");
+  assert.equal(profile.requiresScaleConfirmation, true);
+  const stages = AISQSpec.resolveStages(answers).map((stage) => stage.id);
+  assert.ok(stages.includes("security"));
+  assert.ok(stages.includes("testing"));
+  assert.ok(stages.includes("deployment"));
+  const preface = AISQSpec.buildPreface(answers);
+  assert.match(preface, /Custom Project Size: mid-market pilot/);
+  assert.match(preface, /Production hardening, testing, and deployment/);
+});
+
+test("custom scale respects a confirmed delivery profile and round-trips custom fields through templates", () => {
+  const answers = {
+    archetype: "custom",
+    archetypeDetail: "Interactive learning lab",
+    scale: "custom",
+    scaleDetail: "Single-school pilot",
+    deliveryProfile: "mvp"
+  };
+  const profile = AISQSpec.normalizeProjectProfile(answers);
+  assert.equal(profile.scale, "mvp");
+  assert.equal(profile.requiresScaleConfirmation, false);
+  assert.match(AISQSpec.buildPreface(answers), /confirmed Mvp delivery profile/i);
+  const encoded = AISQSpec.serializeTemplate(answers);
+  assert.deepEqual(AISQSpec.deserializeTemplate(encoded), answers);
+});
+
+test("canonical category and delivery profile retain custom detail without reopening confirmation", () => {
+  const answers = {
+    archetype: "saas",
+    archetypeDetail: "A curated B2B vendor marketplace",
+    scale: "production",
+    scaleDetail: "Phased rollout to 50 enterprise customers"
+  };
+  const profile = AISQSpec.normalizeProjectProfile(answers);
+  assert.equal(profile.archetype, "saas");
+  assert.equal(profile.scale, "production");
+  assert.equal(profile.isCustomArchetype, true);
+  assert.equal(profile.isCustomScale, true);
+  assert.equal(profile.requiresArchetypeReview, false);
+  assert.equal(profile.requiresScaleConfirmation, false);
+  assert.equal(profile.requiresReview, false);
+  const preface = AISQSpec.buildPreface(answers);
+  assert.match(preface, /Custom Product Category: A curated B2B vendor marketplace/);
+  assert.match(preface, /Custom Project Size: Phased rollout to 50 enterprise customers/);
+  assert.match(preface, /confirmed SaaS Platform profile/i);
+  assert.match(preface, /confirmed production delivery profile/i);
+  const stages = AISQSpec.resolveStages(answers).map((stage) => stage.id);
+  assert.ok(stages.includes("security"));
+  assert.ok(stages.includes("testing"));
+});
+
+test("custom context is text-only, template-safe, and materially appears in the generated preface", () => {
+  const answers = {
+    name: "Field Ops",
+    customContext: [
+      { label: "Operating constraint", value: "Must work offline for up to eight hours." },
+      { label: "Rollout", value: "Pilot with two regional teams before national launch." }
+    ]
+  };
+  assert.deepEqual(AISQSpec.normalizeCustomContext(answers.customContext), answers.customContext);
+  const preface = AISQSpec.buildPreface(answers);
+  assert.match(preface, /Tailored Context:/);
+  assert.match(preface, /Operating constraint: Must work offline for up to eight hours\./);
+  assert.match(preface, /Rollout: Pilot with two regional teams before national launch\./);
+  assert.deepEqual(AISQSpec.deserializeTemplate(AISQSpec.serializeTemplate(answers)), answers);
 });
 
 test("deserializeTemplate rejects prototype pollution", () => {

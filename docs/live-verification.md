@@ -4,7 +4,7 @@
 
 Current-source verification completed in the production-order harness:
 
-- `npm run verify`: 98/98 tests passed, including both workflow choices, Draft Plan provenance and migration, question ranking/cap, dependency review, focus/layout coverage, skip/dismiss event logging, wizard exact-once flows, keyed lease fencing, route migration, panel minimize/show/hide, root-present reinjection, and async-hydration reinjection.
+- `npm run verify`: 117/117 tests passed, including both workflow choices, Concept Map graph/progress/navigation, deterministic custom paths, fail-closed category/size mapping, risk-prioritized branch caps, approval/chain fingerprints, Draft Plan provenance and migration, focus/layout coverage, wizard exact-once flows, keyed lease fencing, route migration, reinjection, and async-hydration cancellation.
 - `npm audit --omit=dev`: zero vulnerabilities (run again after packaging if dependencies change).
 - Manifest, package, and lockfile versions: `0.4.0`.
 - Package archive: `dist/ai-studio-queue-pilot-0.4.0.zip`.
@@ -17,6 +17,9 @@ The signed-in Chrome gate remains intentionally open until the unpacked 0.4.0 ex
 - Date/time:
 - Chrome profile / extension reload:
 - Footer version observed:
+- Concept Map at 500px / 320px:
+- Custom category / compatible profile:
+- Custom size / delivery profile:
 - Draft Plan description path:
 - Template/JSON/ChatGPT paths:
 - Exact-once Add to Queue result:

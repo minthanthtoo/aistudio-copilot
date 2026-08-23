@@ -127,11 +127,22 @@
 
   function openWizardWithAnswers(answers, source = "template") {
     const fullWizard = ctx.state.ui.wizardMode === "full";
+    ctx.__planApprovalBusy = false;
     ctx.mutate(() => {
-      ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(answers || {}));
-      ctx.state.ui.planDraft = fullWizard ? null : globalThis.AISQPlan.createDraft(source, answers || {});
+      const plan = globalThis.AISQPlan;
+      let planDraft = plan.createDraft(source, answers || {});
+      let resolved = plan.resolveDraft(planDraft, { specApi: globalThis.AISQSpec });
+      if (resolved.activeQuestionId) {
+        planDraft = plan.markQuestionShown(resolved.draft, resolved.activeQuestionId);
+        resolved = plan.resolveDraft(planDraft, { specApi: globalThis.AISQSpec });
+        Core.commitTransition(ctx.state, Core.EVENTS.PLAN_QUESTION_SHOWN, { questionId: resolved.activeQuestionId, source: fullWizard ? "full-wizard" : "draft-plan" });
+      }
+      ctx.state.ui.specAnswers = JSON.parse(JSON.stringify(resolved.generatedAnswers));
+      ctx.state.ui.planDraft = resolved.draft;
+      ctx.state.ui.pendingPlanCommitId = null;
+      ctx.state.ui.planMapFocusId = resolved.activeQuestionId;
       ctx.state.ui.buildView = fullWizard ? "wizard_details" : "plan_details";
-      ctx.state.ui.specMode = fullWizard ? "legacy" : "draft";
+      ctx.state.ui.specMode = fullWizard ? "full" : "draft";
     });
     ctx.requestRender();
   }

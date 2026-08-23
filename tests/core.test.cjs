@@ -4,11 +4,16 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 require("../src/core-constants.js");
 require("../src/core-utils.js");
+require("../src/plan-questions.js");
+require("../src/plan-engine.js");
 require("../src/core-state.js");
 require("../src/core-selectors.js");
 require("../src/core-commands.js");
 const Core = global.AISQCore;
 Object.assign(Core, require("../src/core-parser.js"));
+require("../src/spec-data.js");
+require("../src/spec-engine.js");
+const Plan = global.AISQPlan;
 
 test("Stage headings split a prompt pack and preserve the shared preface", () => {
   const input = `Global rules:\n- Keep the current stack.\n\n## Stage 1 — Scaffold\nBuild the shell and navigation with enough implementation detail.\n\n## Stage 2 — Data\nAdd the persistent data layer and validation with enough implementation detail.`;
@@ -352,16 +357,83 @@ test("an active chain cannot be reset during pacing and skipped prompts require 
 
 test("Draft Plan approval imports exactly once and is idempotent for the same commit", () => {
   const state = Core.migrateState({});
-  const chain = Core.makeChain("Approved plan", Core.parsePromptPack("A verified plan prompt with enough implementation detail.", "single").prompts, "raw");
-  const command = { type: "APPROVE_PLAN_IMPORT", payload: { chain, commitId: "plan-commit-1", run: true } };
+  state.ui.planDraft = Plan.createDraft("user", {
+    name: "Approved plan",
+    description: "A verified plan for a focused personal reading tracker.",
+    archetype: "web-app",
+    scale: "hobby",
+    features: "Track books and reading progress"
+  });
+  state.ui.pendingPlanCommitId = "plan-commit-1";
+  const approved = Plan.resolveDraft(Plan.approveProposals(state.ui.planDraft), { specApi: global.AISQSpec });
+  const assembled = global.AISQSpec.assembleSpec(approved.generatedAnswers, approved.generatedAnswers.stageOverrides || {});
+  const parsed = Core.parsePromptPack(assembled.raw, assembled.strategy);
+  const chain = Core.makeChain(approved.generatedAnswers.name, parsed.prompts, assembled.raw, { splitStrategy: parsed.strategy, preface: assembled.preface });
+  const planFingerprint = Plan.approvalFingerprint(state.ui.planDraft, { specApi: global.AISQSpec });
+  const command = { type: "APPROVE_PLAN_IMPORT", payload: { chain, commitId: "plan-commit-1", planFingerprint, run: true } };
   const first = Core.applyCommand(state, command);
   assert.equal(first.ok, true);
   assert.equal(state.chains.length, 1);
   assert.equal(state.ui.planDraft, null);
+  assert.equal(state.ui.pendingPlanCommitId, null);
   assert.deepEqual(state.uiIntent, { action: "start", scope: "stack" });
   assert.deepEqual(state.eventLog.slice(-2).map((entry) => entry.event), ["PLAN_APPROVED", "PLAN_QUEUED"]);
   const second = Core.applyCommand(state, command);
   assert.equal(second.ok, true);
   assert.equal(second.duplicate, true);
   assert.equal(state.chains.length, 1);
+});
+
+test("Draft Plan approval command rejects unresolved profile mappings and stale review fingerprints", () => {
+  const unresolved = Core.migrateState({});
+  unresolved.ui.planDraft = Plan.createDraft("template", {
+    description: "A novel custom workspace.",
+    archetype: "ritual-based community workspace"
+  });
+  const chain = Core.makeChain("Unresolved plan", Core.parsePromptPack("A verified plan prompt with enough implementation detail.", "single").prompts, "raw");
+  const unresolvedResult = Core.applyCommand(unresolved, {
+    type: "APPROVE_PLAN_IMPORT",
+    payload: {
+      chain,
+      commitId: "unresolved-plan",
+      planFingerprint: Plan.approvalFingerprint(unresolved.ui.planDraft, { specApi: global.AISQSpec })
+    }
+  });
+  assert.equal(unresolvedResult.ok, false);
+  assert.match(unresolvedResult.error, /unresolved required/i);
+  assert.equal(unresolved.chains.length, 0);
+
+  const stale = Core.migrateState({});
+  stale.ui.planDraft = Plan.createDraft("user", {
+    description: "A focused personal tracker with a clear workflow.",
+    archetype: "web-app",
+    scale: "hobby",
+    features: "Track one daily habit"
+  });
+  const staleResult = Core.applyCommand(stale, {
+    type: "APPROVE_PLAN_IMPORT",
+    payload: { chain, commitId: "stale-plan", planFingerprint: "fp:stale" }
+  });
+  assert.equal(staleResult.ok, false);
+  assert.match(staleResult.error, /stale|match/i);
+  assert.equal(stale.chains.length, 0);
+
+  const mismatched = Core.migrateState({});
+  mismatched.ui.planDraft = Plan.createDraft("user", {
+    description: "A focused personal tracker with a clear workflow.",
+    archetype: "web-app",
+    scale: "hobby",
+    features: "Track one daily habit"
+  });
+  const mismatchResult = Core.applyCommand(mismatched, {
+    type: "APPROVE_PLAN_IMPORT",
+    payload: {
+      chain,
+      commitId: "mismatched-chain",
+      planFingerprint: Plan.approvalFingerprint(mismatched.ui.planDraft, { specApi: global.AISQSpec })
+    }
+  });
+  assert.equal(mismatchResult.ok, false);
+  assert.match(mismatchResult.error, /does not match the approved plan/i);
+  assert.equal(mismatched.chains.length, 0);
 });

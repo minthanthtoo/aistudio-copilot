@@ -4,8 +4,18 @@
   const ctx = global.AISQContext;
   const { el, button, field } = global.AISQUIUtils;
 
-function renderWizardDetails() {
+  function syncWizardDecision(key, value, render = false) {
+    ctx.mutate(() => {
+      ctx.state.ui.specAnswers[key] = value;
+      ctx.state.ui.planDraft = global.AISQPlan.setDecision(ctx.state.ui.planDraft, key, value);
+    }, render);
+  }
+
+  function renderWizardDetails() {
     const specApi = globalThis.AISQSpec;
+    if (!ctx.state.ui.planDraft) {
+      ctx.state.ui.planDraft = global.AISQPlan.createDraft("legacy", ctx.state.ui.specAnswers || {});
+    }
     const inferred = specApi.inferDefaults(ctx.state.ui.specAnswers);
     const visible = specApi.getVisibleSections(inferred);
     ctx.state.ui.specAnswers.featureChips = ctx.state.ui.specAnswers.featureChips || [];
@@ -32,10 +42,10 @@ function renderWizardDetails() {
       el("div", { style: "font-size: 11px; color: #9995a5;" }, [document.createTextNode(stackSummary)])
     ]);
 
-    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.name = e.target.value; ctx.requestRender(); }, change: e => { setTimeout(() => ctx.requestRender(), 150); } } });
-    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.description = e.target.value; ctx.requestRender(); }, change: e => { setTimeout(() => ctx.requestRender(), 150); } } });
+    const nameInput = el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.name || "", placeholder: "My App", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { syncWizardDecision("name", e.target.value, false); }, change: () => { ctx.requestRender(); } } });
+    const descInput = el("textarea", { className: "aisq-draft", style: "min-height: 60px;", value: ctx.state.ui.specAnswers.description || "", placeholder: "A to-do app...", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { syncWizardDecision("description", e.target.value, false); }, change: () => { ctx.requestRender(); } } });
     
-    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { ctx.state.ui.specAnswers.features = e.target.value; ctx.requestRender(); }, change: e => { setTimeout(() => ctx.requestRender(), 150); } } });
+    const featureText = el("textarea", { className: "aisq-draft", style: "min-height: 80px;", value: ctx.state.ui.specAnswers.features || "", on: { keydown: e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (e.shiftKey) submitAndStart(); else submit(); } }, input: e => { syncWizardDecision("features", e.target.value, false); }, change: () => { ctx.requestRender(); } } });
     const suggestions = specApi.FEATURE_SUGGESTIONS[inferred.archetype] || [];
     const suggestionChips = el("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;" }, suggestions.map(s => {
       const isSelected = ctx.state.ui.specAnswers.featureChips.includes(s);
@@ -46,6 +56,7 @@ function renderWizardDetails() {
           } else {
             ctx.state.ui.specAnswers.featureChips.push(s);
           }
+          ctx.state.ui.planDraft = global.AISQPlan.setDecision(ctx.state.ui.planDraft, "featureChips", ctx.state.ui.specAnswers.featureChips);
         });
         ctx.requestRender();
       }} });
@@ -72,13 +83,14 @@ function renderWizardDetails() {
 
       sel.addEventListener("change", e => {
         const v = e.target.value;
-        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = v; });
         if (v === "__custom__") {
+          syncWizardDecision(key, v, false);
           customInput.style.display = "block";
           customInput.value = "";
           sel.blur();
           setTimeout(() => customInput.focus(), 30);
         } else {
+          syncWizardDecision(key, v, false);
           customInput.style.display = "none";
           customInput.value = "";
           sel.blur();
@@ -87,11 +99,11 @@ function renderWizardDetails() {
       });
 
       customInput.addEventListener("input", e => {
-        ctx.state.ui.specAnswers[key] = e.target.value || "__custom__";
+        syncWizardDecision(key, e.target.value || "__custom__", false);
       });
       
       customInput.addEventListener("change", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value || "__custom__"; });
+        syncWizardDecision(key, e.target.value || "__custom__", false);
         customInput.blur();
         setTimeout(() => ctx.requestRender(), 50);
       });
@@ -113,7 +125,10 @@ function renderWizardDetails() {
       const isEnabled = overrides[s.id] !== undefined ? overrides[s.id] : s.enabled;
       const toggle = el("input", { type: "checkbox", checked: isEnabled, disabled: s.required });
       toggle.addEventListener("change", e => {
-        ctx.mutate(() => { ctx.state.ui.specAnswers.stageOverrides[s.id] = e.target.checked; });
+        ctx.mutate(() => {
+          ctx.state.ui.specAnswers.stageOverrides[s.id] = e.target.checked;
+          ctx.state.ui.planDraft = global.AISQPlan.setDecision(ctx.state.ui.planDraft, "stageOverrides", ctx.state.ui.specAnswers.stageOverrides);
+        });
         ctx.requestRender();
       });
       const header = el("summary", { style: "cursor: pointer; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px;" }, [
@@ -127,27 +142,14 @@ function renderWizardDetails() {
 
     const submit = () => {
       if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
-      const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-      const commandResult = ctx.importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
-      if (commandResult.ok) {
-        ctx.mutate(() => { ctx.state.ui.buildView = "input"; ctx.state.ui.specAnswers = {}; ctx.state.settings.activeTab = "stack"; });
-        ctx.requestRender(true);
-      }
+      const commandResult = ctx.approvePlan(false);
+      if (!commandResult.ok && /review|required/i.test(commandResult.error || "")) ctx.mutate(() => { ctx.state.ui.buildView = "plan_details"; });
     };
     
     const submitAndStart = () => {
       if (ctx.shadow?.activeElement?.blur) ctx.shadow.activeElement.blur();
-      const finalResult = specApi.assembleSpec(ctx.state.ui.specAnswers, overrides);
-      const commandResult = ctx.importText(finalResult.raw, finalResult.strategy, { name: ctx.state.ui.specAnswers.name || "Generated App", preface: finalResult.preface });
-      if (commandResult.ok) {
-        ctx.mutate(() => { 
-          ctx.state.ui.buildView = "input"; 
-          ctx.state.ui.specAnswers = {}; 
-          ctx.state.settings.activeTab = "stack";
-          ctx.state.uiIntent = { action: 'start', scope: 'stack' };
-        });
-        ctx.requestRender(true);
-      }
+      const commandResult = ctx.approvePlan(true);
+      if (!commandResult.ok && /review|required/i.test(commandResult.error || "")) ctx.mutate(() => { ctx.state.ui.buildView = "plan_details"; });
     };
 
     return el("div", { className: "aisq-section" }, [
@@ -157,25 +159,81 @@ function renderWizardDetails() {
       ]),
       previewCard,
       (() => {
-        const mkSelect = (label, key, options) => {
-          const sel = el("select", { className: "aisq-select" }, options.map(o => el("option", { value: o.value, text: o.text, selected: inferred[key] === o.value })));
-          sel.addEventListener("change", e => { ctx.mutate(() => { ctx.state.ui.specAnswers[key] = e.target.value }); ctx.requestRender(); });
-          return field(label, sel);
+        const mkProfileSelect = (label, key, options) => {
+          const detailKey = key === "archetype" ? "archetypeDetail" : "scaleDetail";
+          const customEditing = ctx.state.ui.fullWizardCustomEditingKey === key;
+          const detail = ctx.state.ui.specAnswers[detailKey] || "";
+          const isCustom = !!detail || customEditing;
+          const sel = el("select", { className: "aisq-select", attrs: { "data-wizard-profile": key } }, [
+            ...options.map((option) => el("option", { value: option.value, text: option.text, selected: !isCustom && inferred[key] === option.value })),
+            el("option", { value: "__custom__", text: "Other / custom…", selected: isCustom })
+          ]);
+          sel.addEventListener("change", event => {
+            const value = event.target.value;
+            if (value === "__custom__") {
+              ctx.fullWizardCustomFocusRequestKey = key;
+              ctx.mutate(() => { ctx.state.ui.fullWizardCustomEditingKey = key; });
+              sel.blur();
+              setTimeout(() => ctx.requestRender(true), 0);
+              return;
+            }
+            ctx.mutate(() => {
+              const next = global.AISQPlan.clearCustomChoice(ctx.state.ui.planDraft, key, value);
+              const resolved = global.AISQPlan.resolveDraft(next, { specApi });
+              ctx.state.ui.planDraft = resolved.draft;
+              ctx.state.ui.specAnswers = resolved.generatedAnswers;
+              ctx.state.ui.fullWizardCustomEditingKey = null;
+            });
+            sel.blur();
+            setTimeout(() => ctx.requestRender(true), 0);
+          });
+          const children = [sel];
+          if (isCustom) {
+            const customRaw = el("input", { className: "aisq-input", value: detail, placeholder: `Describe the custom ${label.toLowerCase()}…`, attrs: { "data-wizard-custom-raw": key } });
+            if (ctx.fullWizardCustomFocusRequestKey === key) {
+              ctx.fullWizardCustomFocusRequestKey = null;
+              setTimeout(() => customRaw.focus(), 0);
+            }
+            const canonical = el("select", { className: "aisq-select", attrs: { "data-wizard-custom-canonical": key } }, [
+              el("option", { value: "", text: "Choose the closest delivery profile…" }),
+              ...options.map((option) => el("option", { value: option.value, text: option.text, selected: inferred[key] === option.value }))
+            ]);
+            const apply = button("Apply custom path", () => {
+              if (!customRaw.value.trim() || !canonical.value) {
+                ctx.toast("Describe the custom choice and select its compatible profile.", "error");
+                return;
+              }
+              customRaw.blur();
+              const next = global.AISQPlan.setCustomChoice(ctx.state.ui.planDraft, key, customRaw.value.trim(), canonical.value);
+              ctx.mutate(() => {
+                const resolved = global.AISQPlan.resolveDraft(next, { specApi });
+                ctx.state.ui.planDraft = resolved.draft;
+                ctx.state.ui.specAnswers = resolved.generatedAnswers;
+                ctx.state.ui.fullWizardCustomEditingKey = null;
+              });
+            }, "primary");
+            children.push(el("div", { className: "aisq-plan-custom-choice" }, [
+              field("Your wording", customRaw),
+              field("Compatible build profile", canonical, "This explicit mapping controls stages and risk gates."),
+              apply
+            ]));
+          }
+          return field(label, el("div", {}, children));
         };
         const archOptions = Object.entries(specApi.ARCHETYPES).map(([k, v]) => ({ value: k, text: `${v.emoji} ${v.label}` }));
         const scaleOptions = specApi.SCALES.map(s => ({ value: s, text: s.charAt(0).toUpperCase() + s.slice(1) }));
         return el("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;" }, [
-          mkSelect("App Type", "archetype", archOptions),
-          mkSelect("Project Size", "scale", scaleOptions)
+          mkProfileSelect("App Type", "archetype", archOptions),
+          mkProfileSelect("Project Size / Delivery Profile", "scale", scaleOptions)
         ]);
       })(),
       field("Name", nameInput),
       field("Description", descInput),
       field("Features", el("div", {}, [featureText, suggestionChips])),
       techStackFields ? field("Tech Stack", techStackFields) : null,
-      (visible.audience ? field("Target Audience", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.audience || "", placeholder: "e.g. Developers, Small Business Owners", on: { input: e => { ctx.state.ui.specAnswers.audience = e.target.value; } } })) : null),
-      (visible.industry ? field("Industry / Domain", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.industry || "", placeholder: "e.g. Healthcare, Fintech, Education", on: { input: e => { ctx.state.ui.specAnswers.industry = e.target.value; } } })) : null),
-      (visible.security ? field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption, RBAC", on: { input: e => { ctx.state.ui.specAnswers.security = e.target.value; } } })) : null),
+      (visible.audience ? field("Target Audience", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.audience || "", placeholder: "e.g. Developers, Small Business Owners", on: { input: e => { syncWizardDecision("audience", e.target.value, false); } } })) : null),
+      (visible.industry ? field("Industry / Domain", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.industry || "", placeholder: "e.g. Healthcare, Fintech, Education", on: { input: e => { syncWizardDecision("industry", e.target.value, false); } } })) : null),
+      (visible.security ? field("Security Needs", el("input", { className: "aisq-input", value: ctx.state.ui.specAnswers.security || "", placeholder: "OAuth, E2E Encryption, RBAC", on: { input: e => { syncWizardDecision("security", e.target.value, false); } } })) : null),
 
       
       el("details", { style: "margin-top: 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px;" }, [
@@ -200,7 +258,8 @@ function renderWizardDetails() {
           } else {
             const name = saveNameInput.value.trim();
             if (name) {
-              await ctx.saveUserTemplate(name, ctx.state.ui.specAnswers);
+              const latest = global.AISQPlan.resolveDraft(ctx.state.ui.planDraft, { specApi });
+              await ctx.saveUserTemplate(name, latest.generatedAnswers);
               saveNameInput.value = "";
               saveNameInput.style.display = "none";
               saveMode = false;
@@ -213,6 +272,7 @@ function renderWizardDetails() {
       })(),
 
       el("div", { className: "aisq-actions", style: "margin-top: 8px;" }, [
+        button("Review Concept Map", () => { ctx.mutate(() => { ctx.state.ui.buildView = "plan_details"; }); }, "ghost"),
         button("Add to Queue", submit, "ghost"),
         button("Generate & Run ▶", submitAndStart, "primary")
       ])

@@ -237,7 +237,9 @@ test("wizard Add to Queue creates exactly one chain without host submission", as
   draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
   buttonNamed(env.shadow(), "Build with Wizard").click();
   await wait(60);
-  buttonNamed(env.shadow(), "Add to Queue").click();
+  const add = buttonNamed(env.shadow(), "Add to Queue");
+  add.click();
+  add.click();
   await wait(100);
   assert.equal(env.window.__aisq.state().chains.length, 1);
   assert.equal(hostClicks, 0);
@@ -258,7 +260,8 @@ test("natural intake lets the user choose the original full wizard", async (t) =
   await wait(100);
   const state = env.window.__aisq.state();
   assert.equal(state.ui.buildView, "wizard_details");
-  assert.equal(state.ui.planDraft, null);
+  assert.equal(state.ui.planDraft.version, 2);
+  assert.equal(state.ui.planDraft.decisions.description.value, "Create a personal reading tracker.");
   assert.equal(state.ui.specAnswers.description, "Create a personal reading tracker.");
   assert.match(env.shadow().textContent, /App Wizard/);
 });
@@ -277,7 +280,7 @@ test("draft plan is persisted as schema-v3 durable intent and rehydrates after r
   assert.equal(first.shadow().querySelectorAll(".aisq-plan-question").length, 1);
   assert.match(first.shadow().textContent, /Clarification 1 of 3/);
   assert.ok(first.window.__aisq.state().eventLog.some((entry) => entry.event === "PLAN_QUESTION_SHOWN"));
-  buttonNamed(first.shadow(), "Continue").click();
+  buttonNamed(first.shadow(), "Accept shown value & continue").click();
   await wait(40);
   assert.match(first.shadow().textContent, /Clarification 2 of 3/);
   await first.window.__aisq.save();
@@ -321,6 +324,145 @@ test("draft plan question edits preserve focus and expose the narrow-layout cont
   const styles = env.shadow().querySelector("style").textContent;
   assert.match(styles, /width:min\(500px,calc\(100vw - 24px\)\)/);
   assert.match(styles, /@media \(max-width:360px\)[\s\S]*\.aisq-plan-actions \.aisq-button \{ width:100%; \}/);
+});
+
+test("Draft Plan exposes an accessible navigable concept map with honest progress and consequences", async (t) => {
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>');
+  t.after(() => env.close());
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Build app.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(100);
+
+  const map = env.shadow().querySelector('.aisq-plan-map [role="tree"]');
+  assert.ok(map, "the decision graph has a semantic tree projection");
+  assert.ok(map.querySelectorAll('[role="treeitem"]').length >= 10);
+  const progress = env.shadow().querySelector(".aisq-plan-map progress");
+  assert.ok(progress);
+  assert.ok(Number(progress.value) < Number(progress.max), "computed assumptions do not count as confirmed progress");
+  const locked = Array.from(map.querySelectorAll('[role="treeitem"]')).find((item) => item.getAttribute("aria-disabled") === "true");
+  assert.ok(locked?.querySelector("button")?.disabled, "locked nodes explain state and cannot be activated");
+  const navigable = Array.from(map.querySelectorAll("button:not(:disabled)"));
+  navigable[0].focus();
+  navigable[0].dispatchEvent(new env.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  assert.equal(env.shadow().activeElement, navigable[1], "arrow keys traverse the semantic map");
+  assert.match(env.shadow().textContent, /scale: hobby[\s\S]*affects stages, architecture, risk/i);
+  assert.doesNotMatch(env.shadow().textContent, /% confidence/);
+
+  buttonNamed(map, "Who is the primary user?").click();
+  await wait(70);
+  const audienceControl = env.shadow().querySelector('[data-plan-key="audience"]');
+  assert.ok(audienceControl, "map navigation focuses a non-linear decision");
+  assert.equal(env.shadow().activeElement, audienceControl, "the active decision receives keyboard focus after a map jump");
+  assert.equal(env.shadow().querySelectorAll(".aisq-plan-question").length, 1, "the overview retains one focus card");
+});
+
+test("Draft Plan custom category and size create durable bounded custom paths", async (t) => {
+  const backend = { data: {}, listeners: new Set() };
+  const env = await createEnvironment('<textarea placeholder="Describe an app and let Gemini do the rest"></textarea><button class="build-button" aria-disabled="true">Build</button>', null, { storageBackend: backend });
+  t.after(() => env.close());
+  env.window.__aisq.show();
+  await wait(40);
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Build a focused workspace for specialized field teams.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(100);
+
+  let category = env.shadow().querySelector('[data-plan-key="archetype"]');
+  category.value = "__aisq_custom__";
+  category.dispatchEvent(new env.window.Event("change", { bubbles: true }));
+  await wait(80);
+  const categoryRaw = env.shadow().querySelector('[data-plan-custom-raw="archetype"]');
+  const categoryProfile = env.shadow().querySelector('[data-plan-custom-profile="archetype"]');
+  assert.ok(categoryRaw && categoryProfile);
+  assert.equal(env.shadow().activeElement, categoryRaw, "opening a custom path moves keyboard focus to its wording field");
+  categoryRaw.value = "Real-time medical triage workspace";
+  categoryProfile.value = "saas";
+  buttonNamed(env.shadow(), "Use custom path").click();
+  await wait(100);
+
+  let state = env.window.__aisq.state();
+  assert.equal(state.ui.planDraft.decisions.archetype.value, "saas");
+  assert.equal(state.ui.planDraft.decisions.archetypeDetail.value, "Real-time medical triage workspace");
+  assert.match(env.shadow().textContent, /What sensitive or regulated data/);
+  assert.match(env.shadow().textContent, /simultaneous edits and temporary disconnections/);
+  assert.match(env.shadow().textContent, /2 additional matching custom decisions use conservative assumptions/);
+
+  buttonNamed(env.shadow().querySelector(".aisq-plan-map"), "How far should the first version go?").click();
+  await wait(70);
+  let size = env.shadow().querySelector('[data-plan-key="scale"]');
+  size.value = "__aisq_custom__";
+  size.dispatchEvent(new env.window.Event("change", { bubbles: true }));
+  await wait(80);
+  const sizeRaw = env.shadow().querySelector('[data-plan-custom-raw="scale"]');
+  const sizeProfile = env.shadow().querySelector('[data-plan-custom-profile="scale"]');
+  sizeRaw.value = "Regional hospital pilot";
+  sizeProfile.value = "production";
+  buttonNamed(env.shadow(), "Use custom path").click();
+  await wait(100);
+
+  state = env.window.__aisq.state();
+  assert.equal(state.ui.planDraft.decisions.scale.value, "production");
+  assert.equal(state.ui.planDraft.decisions.scaleDetail.value, "Regional hospital pilot");
+  const resolved = env.window.AISQPlan.resolveDraft(state.ui.planDraft, { specApi: env.window.AISQSpec });
+  assert.ok(resolved.customQuestions.length <= 3);
+  assert.ok(resolved.requiredQuestionIds.includes("industry"));
+  assert.ok(resolved.requiredQuestionIds.includes("security"));
+  assert.equal(resolved.generatedAnswers.scale, "production");
+  assert.equal(resolved.generatedAnswers.customContext.length, resolved.customQuestions.length + resolved.omittedCustomQuestions.length);
+  assert.equal(resolved.graph.omittedCustomBranches.length, resolved.omittedCustomQuestions.length);
+  assert.equal(JSON.stringify(resolved.generatedAnswers).includes("__aisq_custom__"), false);
+  await env.window.__aisq.save();
+  assert.equal(backend.data.aisqStateV3.ui.planDraft.decisions.archetypeDetail.value, "Real-time medical triage workspace");
+  assert.equal(backend.data.aisqStateV3.ui.planDraft.decisions.scaleDetail.value, "Regional hospital pilot");
+});
+
+test("Full Wizard edits the same graph and approves a custom category exactly once", async (t) => {
+  const env = await createEnvironment('<textarea id="start" placeholder="Describe an app and let Gemini do the rest"></textarea><button id="build" class="build-button" aria-disabled="false">Build</button>');
+  t.after(() => env.close());
+  let hostClicks = 0;
+  env.window.document.getElementById("build").addEventListener("click", () => { hostClicks += 1; });
+  env.window.__aisq.show();
+  await wait(40);
+  buttonNamed(env.shadow(), "Full Wizard").click();
+  const draft = env.shadow().querySelector(".aisq-draft");
+  draft.value = "Build a collaborative workspace for a small design team.";
+  draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
+  buttonNamed(env.shadow(), "Build with Wizard").click();
+  await wait(100);
+
+  let category = env.shadow().querySelector('[data-wizard-profile="archetype"]');
+  category.value = "__custom__";
+  category.dispatchEvent(new env.window.Event("change", { bubbles: true }));
+  await wait(80);
+  const raw = env.shadow().querySelector('[data-wizard-custom-raw="archetype"]');
+  const canonical = env.shadow().querySelector('[data-wizard-custom-canonical="archetype"]');
+  assert.equal(env.shadow().activeElement, raw, "Full Wizard moves focus into the revealed custom field");
+  raw.value = "Real-time collaborative design studio";
+  canonical.value = "saas";
+  buttonNamed(env.shadow(), "Apply custom path").click();
+  await wait(100);
+  const size = env.shadow().querySelector('[data-wizard-profile="scale"]');
+  size.value = "mvp";
+  size.dispatchEvent(new env.window.Event("change", { bubbles: true }));
+  await wait(80);
+
+  const before = env.window.__aisq.state();
+  assert.equal(before.ui.planDraft.decisions.archetypeDetail.value, "Real-time collaborative design studio");
+  const add = buttonNamed(env.shadow(), "Add to Queue");
+  add.click();
+  add.click();
+  await wait(180);
+  const after = env.window.__aisq.state();
+  assert.equal(after.chains.length, 1);
+  assert.match(after.chains[0].preface, /Custom Product Category: Real-time collaborative design studio/);
+  assert.equal(hostClicks, 0);
+  assert.equal(after.eventLog.filter((entry) => entry.event === "PLAN_APPROVED").length, 1);
+  assert.equal(after.eventLog.filter((entry) => entry.event === "PLAN_QUEUED").length, 1);
 });
 
 test("skipping a Draft Plan question records local skip and dismissal events", async (t) => {
@@ -374,12 +516,17 @@ test("JSON and ChatGPT extraction entry paths create proposed Draft Plans", asyn
   env.window.__aisq.show();
   await wait(40);
   const draft = env.shadow().querySelector(".aisq-draft");
-  draft.value = JSON.stringify({ name: "JSON starter", description: "A JSON-imported app", archetype: "dashboard" });
+  draft.value = JSON.stringify({ name: "JSON starter", description: "A JSON-imported app", archetype: "ritual-based community workspace" });
   draft.dispatchEvent(new env.window.Event("input", { bubbles: true }));
   buttonNamed(env.shadow(), "Load as Template").click();
   await wait(60);
   assert.equal(env.window.__aisq.state().ui.planDraft.intent.source, "template");
   assert.equal(env.window.__aisq.state().ui.planDraft.decisions.name.status, "proposed");
+  assert.deepEqual(Array.from(env.window.__aisq.state().ui.planDraft.unresolvedProfileKeys), ["archetype"]);
+  const imported = env.window.AISQPlan.resolveDraft(env.window.__aisq.state().ui.planDraft, { specApi: env.window.AISQSpec });
+  assert.ok(imported.requiredQuestionIds.includes("archetype"));
+  assert.equal(imported.graph.readiness.queueEligible, false);
+  assert.match(env.shadow().textContent, /Required: choose a safe value/);
 
   buttonNamed(env.shadow(), "← Back").click();
   await wait(40);

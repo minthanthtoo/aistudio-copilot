@@ -37,6 +37,14 @@
     return { ok: false, error: message };
   }
 
+  function planChainDigest(chain) {
+    return Core.hashText(JSON.stringify({
+      name: normalizeText(chain?.name),
+      preface: normalizeText(chain?.preface),
+      prompts: Array.isArray(chain?.prompts) ? chain.prompts.map((prompt) => normalizeText(prompt?.text)) : []
+    }));
+  }
+
   function applyCommand(state, command) {
     const type = command?.type;
     const payload = command?.payload || {};
@@ -48,6 +56,38 @@
       if (state.ui?.lastPlanCommitId === commitId && state.ui.lastImportId) {
         return { ok: true, value: getChainById(state, state.ui.lastImportId), duplicate: true };
       }
+      const planApi = global.AISQPlan;
+      if (!state.ui?.planDraft || !planApi?.resolveDraft || !planApi?.approvalFingerprint) return reject("Plan approval state is unavailable");
+      let resolvedPlan;
+      let currentFingerprint;
+      try {
+        const planOptions = { specApi: global.AISQSpec };
+        resolvedPlan = planApi.resolveDraft(state.ui.planDraft, planOptions);
+        currentFingerprint = planApi.approvalFingerprint(resolvedPlan.draft, planOptions);
+      } catch (error) {
+        return reject(`Plan approval could not be validated: ${error.message}`);
+      }
+      if (resolvedPlan.requiredQuestionIds.length || resolvedPlan.needsReview.length || resolvedPlan.graph?.readiness?.queueEligible === false) {
+        return reject("Plan has unresolved required or review decisions");
+      }
+      if (!payload.planFingerprint || payload.planFingerprint !== currentFingerprint) return reject("Plan approval is stale or does not match the reviewed draft");
+      const specApi = global.AISQSpec;
+      if (!specApi?.assembleSpec || !Core.parsePromptPack || !planApi.approveProposals) return reject("Plan generator validation is unavailable");
+      let expectedChain;
+      try {
+        const approvedDraft = planApi.approveProposals(resolvedPlan.draft);
+        const approvedPlan = planApi.resolveDraft(approvedDraft, { specApi });
+        const assembled = specApi.assembleSpec(approvedPlan.generatedAnswers, approvedPlan.generatedAnswers.stageOverrides || {});
+        const parsed = Core.parsePromptPack(assembled.raw, assembled.strategy);
+        expectedChain = {
+          name: approvedPlan.generatedAnswers.name || "Generated App",
+          preface: assembled.preface,
+          prompts: parsed.prompts
+        };
+      } catch (error) {
+        return reject(`Approved chain could not be generated: ${error.message}`);
+      }
+      if (planChainDigest(payload.chain) !== planChainDigest(expectedChain)) return reject("Queued chain does not match the approved plan");
       const imported = normalizeChain(payload.chain);
       if (!imported.prompts.length) return reject("Cannot approve an empty plan");
       state.chains.push(imported);
@@ -60,6 +100,7 @@
       state.selectedChainId = imported.id;
       state.ui.lastImportId = imported.id;
       state.ui.lastPlanCommitId = commitId;
+      state.ui.pendingPlanCommitId = null;
       state.ui.planDraft = null;
       state.ui.specAnswers = {};
       state.ui.buildView = "input";
@@ -450,7 +491,7 @@
   }
 
 
-  Object.assign(Core, { commitTransition, reject, applyCommand, classifyHostSnapshot, decideRunnerTransition });
+  Object.assign(Core, { commitTransition, reject, planChainDigest, applyCommand, classifyHostSnapshot, decideRunnerTransition });
   
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
 })(typeof globalThis !== "undefined" ? globalThis : this);
