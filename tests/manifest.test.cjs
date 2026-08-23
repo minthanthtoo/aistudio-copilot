@@ -56,6 +56,18 @@ test("packaging derives runtime source files from the manifest contract", () => 
   assert.ok(contentFiles.includes("src/ui-draft-plan.js"));
 });
 
+test("packaged archive carries every service-worker importScripts dependency", () => {
+  const packager = require("../scripts/package-extension.cjs");
+  const files = packager.collectFiles();
+  const workerSource = fs.readFileSync(path.join(root, "src/background.js"), "utf8");
+  const imports = Array.from(workerSource.matchAll(/importScripts\(\s*["']([^"']+)["']\s*\)/g)).map((match) => match[1]);
+  assert.ok(imports.length >= 1, "background.js declares at least one importScripts dependency");
+  for (const dependency of imports) {
+    assert.ok(files.includes(dependency), `package list includes ${dependency}`);
+    assert.equal(fs.existsSync(path.join(root, dependency)), true, `${dependency} exists on disk`);
+  }
+});
+
 test("toolbar action and command message only an active AI Studio Apps tab", async () => {
   const source = fs.readFileSync(path.join(root, "src/background.js"), "utf8");
   let actionListener;

@@ -7,23 +7,42 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 const contentFiles = manifest.content_scripts.flatMap((entry) => entry.js || []);
-const files = [
-  "manifest.json",
-  ...contentFiles,
-  "src/background.js",
-  "assets/icon16.png",
-  "assets/icon32.png",
-  "assets/icon48.png",
-  "assets/icon128.png",
-  "README.md",
-  "docs/ui-state-map.md",
-  "docs/comparison.md",
-  "docs/live-verification.md",
-  "docs/live-acceptance-pack.md",
-  "docs/production-readiness.md",
-  "docs/decision-log.md",
-  "RELEASE_CHECKLIST.md"
-];
+
+// Derives the full runtime file list: manifest content scripts, the service
+// worker, and every importScripts dependency of the worker (transitively), so a
+// new worker-side module can never be silently omitted from the archive.
+function collectFiles() {
+  const files = ["manifest.json", ...contentFiles, "src/background.js"];
+  const queue = ["src/background.js"];
+  const seen = new Set();
+  while (queue.length) {
+    const relative = queue.shift();
+    if (seen.has(relative)) continue;
+    seen.add(relative);
+    const source = fs.readFileSync(path.join(root, relative), "utf8");
+    for (const match of source.matchAll(/importScripts\(\s*["']([^"']+)["']\s*\)/g)) {
+      if (!files.includes(match[1])) files.push(match[1]);
+      queue.push(match[1]);
+    }
+  }
+  return [
+    ...files,
+    "assets/icon16.png",
+    "assets/icon32.png",
+    "assets/icon48.png",
+    "assets/icon128.png",
+    "README.md",
+    "docs/ui-state-map.md",
+    "docs/comparison.md",
+    "docs/live-verification.md",
+    "docs/live-acceptance-pack.md",
+    "docs/production-readiness.md",
+    "docs/decision-log.md",
+    "RELEASE_CHECKLIST.md"
+  ];
+}
+
+module.exports = { collectFiles };
 
 function crc32(buffer) {
   let crc = 0xffffffff;
@@ -33,6 +52,8 @@ function crc32(buffer) {
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
+
+const files = collectFiles();
 
 const localParts = [];
 const centralParts = [];
