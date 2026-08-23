@@ -15,7 +15,7 @@
 - [x] Manifest, package, and lockfile versions match.
 - [x] `npm run icons` succeeds and manifest PNG dimensions validate.
 - [x] `npm audit --omit=dev` reports zero vulnerabilities.
-- [x] `npm run verify` passes with the current 98-test suite, including both workflow choices, Draft Plan migration/provenance, manifest-order integration, wizard exact-once flows, route migration, reinjection, and keyed lease fencing.
+- [x] `npm run verify` passes with the current 132-test suite, including both workflow choices, Draft Plan migration/provenance, manifest-order integration, wizard exact-once flows, route migration, reinjection, keyed lease fencing, and the fetch-policy allowlist.
 - [x] No `innerHTML`, `eval`, remote executable code, broad host permission, or unbounded retry loop is present.
 - [x] Every confirmed production failure has a regression test.
 
